@@ -57,7 +57,11 @@
       <button class="icon-btn" data-close aria-label="Close">×</button>
     </div>
 
-    <div id="platform-list" class="platform-list"></div>
+    <div id="platform-picker" class="stack">
+      <input id="platform-search" type="search" placeholder="Search apps…" autocomplete="off" />
+      <div id="platform-list" class="platform-list"></div>
+      <p class="hint"><strong>Auto</strong> apps update for you. <strong>Manual</strong> apps block outside edits, so Profile Hub copies your bio and picture for you to paste in.</p>
+    </div>
 
     <form id="bluesky-form" class="stack" hidden>
       <p class="muted">Use an <a href="https://bsky.app/settings/app-passwords" target="_blank" rel="noopener">app password</a>, not your real password.</p>

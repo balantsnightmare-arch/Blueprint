@@ -93,10 +93,23 @@ textarea { resize: vertical; }
 .circle img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 
 .circle .badge {
-  position: absolute; right: -2px; bottom: -2px; width: 30px; height: 30px;
+  position: absolute; right: -2px; bottom: -2px; width: 32px; height: 32px;
   border-radius: 50%; border: 3px solid var(--bg);
-  display: grid; place-items: center; font-size: 13px; color: #fff;
+  display: grid; place-items: center; font-size: 13px;
 }
+
+/* Brand logos: a single-color SVG used as a mask, filled with the logo color. */
+.logo {
+  display: block; width: 50%; height: 50%;
+  -webkit-mask: var(--icon) center / contain no-repeat;
+  mask: var(--icon) center / contain no-repeat;
+}
+.logo-text { font-family: Arial, sans-serif; font-weight: 700; font-size: 0.5em; letter-spacing: -0.02em; }
+.circle .logo-text { font-size: 38px; }
+.badge .logo-text, .platform .dot .logo-text { font-size: 15px; }
+
+/* Black brand circles would vanish on a dark background, so give every circle a faint ring. */
+.circle:not(.add), .platform .dot, .circle .badge { box-shadow: var(--shadow), inset 0 0 0 1px rgb(128 128 128 / 0.35); }
 
 .circle.add {
   margin-left: 16px; background: transparent; box-shadow: none;
@@ -164,7 +177,10 @@ dialog {
 dialog::backdrop { background: rgb(0 0 0 / 0.5); }
 .dialog-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
 
-.platform-list { display: flex; flex-direction: column; gap: 8px; }
+.platform-list { display: flex; flex-direction: column; gap: 8px; max-height: min(420px, 55vh); overflow-y: auto; padding-right: 2px; }
+.platform .grow { flex: 1; min-width: 0; }
+.kind { flex: none; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--border); color: var(--muted); }
+.kind.auto { border-color: var(--ok); color: var(--ok); }
 .platform {
   display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 12px; text-align: left;
   background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 10px; font-weight: 400;

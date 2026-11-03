@@ -1,10 +1,26 @@
 // "auto" platforms are updated by the server. "manual" ones can't be edited by
 // apps, so we just help you copy your bio/picture and open their settings page.
+// Ordered from most to least popular (roughly, by monthly users).
+// Logos are from Simple Icons (public/icons, CC0). LinkedIn isn't in that set,
+// so it uses a text mark instead.
+const MANUAL = 'Copy & paste helper';
 const PLATFORMS = {
-  bluesky: { label: 'Bluesky', kind: 'auto', color: '#1185fe', letter: 'B', bioLimit: 256, blurb: 'Bio and picture update automatically' },
-  youtube: { label: 'YouTube', kind: 'auto', color: '#ff0033', letter: 'Y', bioLimit: 1000, blurb: 'Channel description updates automatically' },
-  instagram: { label: 'Instagram', kind: 'manual', color: '#d62976', letter: 'I', settingsUrl: 'https://www.instagram.com/accounts/edit/', blurb: 'Copy and paste (Instagram blocks apps)' },
-  discord: { label: 'Discord', kind: 'manual', color: '#5865f2', letter: 'D', settingsUrl: 'https://discord.com/app', blurb: 'Copy and paste (Discord blocks apps)' },
+  facebook: { label: 'Facebook', kind: 'manual', color: '#0866FF', bioLimit: 101, settingsUrl: 'https://www.facebook.com/me', blurb: MANUAL },
+  youtube: { label: 'YouTube', kind: 'auto', color: '#FF0000', bioLimit: 1000, blurb: 'Updates your channel description automatically' },
+  instagram: { label: 'Instagram', kind: 'manual', color: '#FF0069', bioLimit: 150, settingsUrl: 'https://www.instagram.com/accounts/edit/', blurb: MANUAL },
+  tiktok: { label: 'TikTok', kind: 'manual', color: '#000000', bioLimit: 80, settingsUrl: 'https://www.tiktok.com/profile', blurb: MANUAL },
+  linkedin: { label: 'LinkedIn', kind: 'manual', color: '#0A66C2', text: 'in', bioLimit: 2600, settingsUrl: 'https://www.linkedin.com/in/me/', blurb: MANUAL },
+  snapchat: { label: 'Snapchat', kind: 'manual', color: '#FFFC00', fg: '#000000', settingsUrl: 'https://accounts.snapchat.com/', blurb: MANUAL },
+  x: { label: 'X (Twitter)', kind: 'manual', color: '#000000', bioLimit: 160, settingsUrl: 'https://x.com/settings/profile', blurb: MANUAL },
+  reddit: { label: 'Reddit', kind: 'manual', color: '#FF4500', bioLimit: 200, settingsUrl: 'https://www.reddit.com/settings/profile', blurb: MANUAL },
+  pinterest: { label: 'Pinterest', kind: 'manual', color: '#BD081C', bioLimit: 500, settingsUrl: 'https://www.pinterest.com/settings/', blurb: MANUAL },
+  threads: { label: 'Threads', kind: 'manual', color: '#000000', bioLimit: 150, settingsUrl: 'https://www.threads.com/', blurb: MANUAL },
+  discord: { label: 'Discord', kind: 'manual', color: '#5865F2', bioLimit: 190, settingsUrl: 'https://discord.com/app', blurb: MANUAL },
+  twitch: { label: 'Twitch', kind: 'manual', color: '#9146FF', bioLimit: 300, settingsUrl: 'https://www.twitch.tv/settings/profile', blurb: MANUAL },
+  steam: { label: 'Steam', kind: 'manual', color: '#000000', settingsUrl: 'https://steamcommunity.com/my/edit/info', blurb: MANUAL },
+  github: { label: 'GitHub', kind: 'manual', color: '#181717', bioLimit: 160, settingsUrl: 'https://github.com/settings/profile', blurb: MANUAL },
+  bluesky: { label: 'Bluesky', kind: 'auto', color: '#1185FE', bioLimit: 256, blurb: 'A newer X/Twitter alternative. Updates bio and picture automatically' },
+  mastodon: { label: 'Mastodon', kind: 'manual', color: '#6364FF', bioLimit: 500, settingsUrl: 'https://mastodon.social/settings/profile', blurb: `${MANUAL} (opens mastodon.social)` },
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -49,6 +65,23 @@ function el(tag, props = {}, children = []) {
   const node = Object.assign(document.createElement(tag), props);
   node.append(...children);
   return node;
+}
+
+// The platform's logo, tinted with CSS mask so it can sit on its brand color.
+function logo(id) {
+  const p = PLATFORMS[id];
+  if (p.text) return el('span', { className: 'logo-text', textContent: p.text });
+  const mark = el('span', { className: 'logo', role: 'img', ariaLabel: p.label });
+  mark.style.setProperty('--icon', `url(icons/${id}.svg)`);
+  mark.style.background = p.fg ?? '#fff';
+  return mark;
+}
+
+function brandDot(id, className) {
+  const dot = el('span', { className }, [logo(id)]);
+  dot.style.background = PLATFORMS[id].color;
+  dot.style.color = PLATFORMS[id].fg ?? '#fff';
+  return dot;
 }
 
 // ---------- accounts ----------
@@ -106,11 +139,9 @@ function renderCircles() {
       },
     });
     circle.style.background = a.color;
-    if (a.avatar) circle.append(el('img', { src: a.avatar, alt: '' }));
-    else circle.append(a.letter);
-    const badge = el('span', { className: 'badge', textContent: a.letter });
-    badge.style.background = a.color;
-    if (a.avatar) circle.append(badge);
+    circle.style.color = a.fg ?? '#fff';
+    if (a.avatar) circle.append(el('img', { src: a.avatar, alt: '' }), brandDot(a.id, 'badge'));
+    else circle.append(logo(a.id));
     row.insertBefore(circle, $('#add-account'));
   }
 
@@ -172,35 +203,50 @@ function manualActions(a) {
 
 const dialog = $('#add-dialog');
 
-function openAddDialog() {
+function renderPlatformList() {
   const list = $('#platform-list');
+  const query = $('#platform-search').value.trim().toLowerCase();
   const linked = new Set(accounts().map((a) => a.id));
   list.replaceChildren();
   for (const [id, p] of Object.entries(PLATFORMS)) {
-    if (linked.has(id)) continue;
+    if (linked.has(id) || !p.label.toLowerCase().includes(query)) continue;
     const unavailable = id === 'youtube' && !status.youtube?.configured;
-    const dot = el('span', { className: 'dot', textContent: p.letter });
-    dot.style.background = p.color;
+    const tag = el('span', {
+      className: `kind ${p.kind}`,
+      textContent: p.kind === 'auto' ? 'Auto' : 'Manual',
+      title: p.kind === 'auto' ? 'Profile Hub updates it for you' : "This app blocks profile edits, so you'll paste it in yourself",
+    });
     const btn = el('button', { className: 'platform', disabled: unavailable }, [
-      dot,
-      el('span', {}, [el('strong', { textContent: p.label }), el('small', { textContent: unavailable ? 'Not set up on this server yet' : p.blurb })]),
+      brandDot(id, 'dot'),
+      el('span', { className: 'grow' }, [el('strong', { textContent: p.label }), el('small', { textContent: unavailable ? 'Not set up on this server yet' : p.blurb })]),
+      tag,
     ]);
     btn.onclick = () => addPlatform(id);
     list.append(btn);
   }
-  if (!list.children.length) list.append(el('p', { className: 'muted', textContent: 'Every available platform is already linked.' }));
+  if (!list.children.length) {
+    list.append(el('p', { className: 'muted', textContent: query ? 'No apps match that search.' : 'Every app is already linked.' }));
+  }
+}
+
+function openAddDialog() {
+  $('#platform-search').value = '';
+  renderPlatformList();
   showPlatformList();
   dialog.showModal();
+  $('#platform-search').focus();
 }
 
 function showPlatformList() {
-  $('#platform-list').hidden = false;
+  $('#platform-picker').hidden = false;
   $('#bluesky-form').hidden = true;
 }
 
+$('#platform-search').addEventListener('input', renderPlatformList);
+
 function addPlatform(id) {
   if (id === 'bluesky') {
-    $('#platform-list').hidden = true;
+    $('#platform-picker').hidden = true;
     $('#bluesky-form').hidden = false;
     $('#bluesky-form').handle.focus();
   } else if (id === 'youtube') {
@@ -302,7 +348,8 @@ $('#apply').addEventListener('click', async () => {
   if (!updateBio && !newAvatar) return showError('Nothing to update: choose a new picture or tick "Update bio".');
 
   const bio = $('#bio').value;
-  const tooLong = targets.filter((a) => updateBio && a.bioLimit && countChars(bio) > a.bioLimit);
+  // Only block on apps we update ourselves; manual ones just show a warning in the counter.
+  const tooLong = targets.filter((a) => updateBio && a.kind === 'auto' && countChars(bio) > a.bioLimit);
   if (tooLong.length) return showError(`Bio is too long for ${tooLong.map((a) => a.label).join(', ')}.`);
 
   showError('');
