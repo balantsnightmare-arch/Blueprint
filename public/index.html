@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Profile Hub</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Profile Hub</h1>
+      <p class="muted">Change your profile once, update it everywhere.</p>
+    </header>
+
+    <div id="error" class="banner" hidden></div>
+
+    <section>
+      <h2>Connected accounts</h2>
+      <div class="cards">
+        <article class="card" id="card-bluesky">
+          <div class="card-head">
+            <span class="dot"></span>
+            <h3>Bluesky</h3>
+          </div>
+          <p class="status muted">Not connected</p>
+          <form id="bluesky-form" class="stack">
+            <input name="handle" placeholder="you.bsky.social" autocomplete="username" required />
+            <input name="appPassword" type="password" placeholder="App password" autocomplete="current-password" required />
+            <button type="submit">Connect</button>
+            <p class="hint">Use an <a href="https://bsky.app/settings/app-passwords" target="_blank" rel="noopener">app password</a>, not your real password.</p>
+          </form>
+          <button class="secondary disconnect" data-platform="bluesky" hidden>Disconnect</button>
+        </article>
+
+        <article class="card" id="card-youtube">
+          <div class="card-head">
+            <span class="dot"></span>
+            <h3>YouTube</h3>
+          </div>
+          <p class="status muted">Not connected</p>
+          <a class="button connect-link" href="/auth/youtube">Connect with Google</a>
+          <p class="hint not-configured" hidden>Add your Google API keys to <code>.env</code> to enable this. See the README.</p>
+          <button class="secondary disconnect" data-platform="youtube" hidden>Disconnect</button>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <h2>Your profile</h2>
+      <div class="editor">
+        <div class="avatar-picker">
+          <img id="avatar-preview" alt="" hidden />
+          <div id="avatar-empty" class="avatar-empty">No new picture</div>
+          <label class="button secondary">
+            Choose picture
+            <input id="avatar-input" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+          </label>
+          <button id="avatar-clear" class="link" hidden>Keep current picture</button>
+        </div>
+        <div class="stack grow">
+          <label for="bio">Bio</label>
+          <textarea id="bio" rows="5" placeholder="Write your bio once…"></textarea>
+          <p id="bio-count" class="hint"></p>
+          <label class="check"><input type="checkbox" id="update-bio" checked /> Update bio</label>
+        </div>
+      </div>
+
+      <div class="apply-row">
+        <div id="targets" class="targets"></div>
+        <button id="apply" disabled>Update selected profiles</button>
+      </div>
+      <ul id="results" class="results"></ul>
+    </section>
+
+    <section>
+      <h2>Manual platforms</h2>
+      <p class="muted">Discord and Instagram don't let apps edit your profile, and automating them can get your account banned. Copy your bio and picture here, then paste them in.</p>
+      <div class="manual">
+        <button id="copy-bio" class="secondary">Copy bio</button>
+        <a id="download-avatar" class="button secondary" download="profile.jpg" hidden>Download picture</a>
+        <a class="button secondary" href="https://www.instagram.com/accounts/edit/" target="_blank" rel="noopener">Open Instagram settings</a>
+        <a class="button secondary" href="https://discord.com/app" target="_blank" rel="noopener">Open Discord</a>
+      </div>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

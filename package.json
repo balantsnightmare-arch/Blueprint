@@ -1,0 +1,17 @@
+{
+  "name": "profile-hub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Change your profile picture and bio once, update it on every linked platform.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "@atproto/api": "^0.30.0",
+    "dotenv": "^18.0.9",
+    "express": "^5.3.0",
+    "googleapis": "^189.0.0"
+  }
+}
