@@ -191,18 +191,154 @@ function renderDetail() {
   );
 }
 
+// ---------- helpers for manual apps ----------
+
+// Phones get the share sheet (with "Save Image" and direct sharing to apps);
+// computers get a normal download.
+const isTouch = matchMedia('(pointer: coarse)').matches;
+const SAVE_LABEL = isTouch ? 'Save picture' : 'Download picture';
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // Older method; still works in some browsers that block the clipboard API.
+    const area = el('textarea', { value: text, readOnly: true });
+    area.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+    document.body.append(area);
+    area.select();
+    area.setSelectionRange(0, text.length); // needed on iPhone
+    const ok = document.execCommand('copy');
+    area.remove();
+    if (!ok) showError("Couldn't copy automatically. Select the bio and copy it by hand.");
+    return ok;
+  }
+}
+
+// Built synchronously on purpose: iPhone Safari only opens the share sheet if
+// navigator.share() runs straight from the tap, with no await before it.
+function dataUrlToFile(dataUrl) {
+  const [head, base64] = dataUrl.split(',');
+  const type = head.match(/data:([^;]+)/)[1];
+  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+  return new File([bytes], 'profile-picture.jpg', { type });
+}
+
+async function savePicture(dataUrl) {
+  if (isTouch && navigator.canShare) {
+    const file = dataUrlToFile(dataUrl);
+    if (navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file] });
+        return true;
+      } catch (err) {
+        if (err.name === 'AbortError') return false; // they closed the share sheet
+      }
+    }
+  }
+  const link = el('a', { href: dataUrl, download: 'profile-picture.jpg' });
+  document.body.append(link);
+  link.click();
+  link.remove();
+  return true;
+}
+
 // Buttons that help with platforms we can't update for you.
 function manualActions(a) {
   const copy = el('button', { className: 'secondary', textContent: 'Copy bio' });
   copy.onclick = async () => {
-    await navigator.clipboard.writeText($('#bio').value);
+    if (!(await copyText($('#bio').value))) return;
     copy.textContent = 'Copied!';
     setTimeout(() => (copy.textContent = 'Copy bio'), 1500);
   };
   const buttons = [copy];
-  if (newAvatar) buttons.push(el('a', { className: 'button secondary', href: newAvatar, download: 'profile.jpg', textContent: 'Download picture' }));
+  if (newAvatar) {
+    const picture = newAvatar;
+    buttons.push(el('button', { className: 'secondary', textContent: SAVE_LABEL, onclick: () => savePicture(picture) }));
+  }
   buttons.push(el('a', { className: 'button secondary', href: a.settingsUrl, target: '_blank', rel: 'noopener', textContent: `Open ${a.label}` }));
   return buttons;
+}
+
+// ---------- step-by-step guide ----------
+// Walks through each manual app one at a time: copy bio, save picture,
+// open the app, then move on to the next.
+
+let guide = null; // { steps, index, bio, avatar, done: Set }
+
+function startGuide(steps, bio, avatar) {
+  guide = { steps, index: 0, bio, avatar, done: new Set() };
+  renderGuide();
+  $('#guide').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function guideTask(key, number, label, doneLabel, action) {
+  const done = guide.done.has(key);
+  const btn = el('button', { className: `task${done ? ' done' : ''}` }, [
+    el('span', { className: 'task-num', textContent: done ? '✓' : number }),
+    el('span', { textContent: done ? doneLabel : label }),
+  ]);
+  btn.onclick = async () => {
+    if ((await action()) === false) return;
+    guide.done.add(key);
+    renderGuide();
+  };
+  return btn;
+}
+
+function renderGuide() {
+  const box = $('#guide');
+  box.hidden = !guide;
+  if (!guide) return;
+  const { steps, index } = guide;
+
+  const close = el('button', { className: 'secondary', textContent: 'Close', onclick: () => { guide = null; renderGuide(); } });
+
+  if (index >= steps.length) {
+    box.replaceChildren(
+      el('h2', { textContent: 'All done 🎉' }),
+      el('p', { className: 'muted', textContent: `You went through ${steps.length} app${steps.length === 1 ? '' : 's'}. Your profiles should all match now.` }),
+      el('div', { className: 'guide-foot' }, [close]),
+    );
+    return;
+  }
+
+  const a = steps[index];
+  const progress = el('div', { className: 'progress' }, [el('span')]);
+  progress.firstChild.style.width = `${(index / steps.length) * 100}%`;
+
+  const tasks = [];
+  let n = 1;
+  if (guide.bio !== undefined) {
+    tasks.push(guideTask(`${a.id}:bio`, n++, 'Copy bio', 'Bio copied', () => copyText(guide.bio)));
+  }
+  if (guide.avatar) {
+    tasks.push(guideTask(`${a.id}:pic`, n++, SAVE_LABEL, isTouch ? 'Picture saved' : 'Picture downloaded', () => savePicture(guide.avatar)));
+  }
+  tasks.push(guideTask(`${a.id}:open`, n++, `Open ${a.label}`, `${a.label} opened`, () => { window.open(a.settingsUrl, '_blank', 'noopener'); }));
+
+  const tips = [];
+  if (guide.bio !== undefined && a.bioLimit && countChars(guide.bio) > a.bioLimit) {
+    tips.push(el('p', { className: 'warn', textContent: `Heads up: ${a.label} only allows ${a.bioLimit} characters, so your bio will get cut off there.` }));
+  }
+  tips.push(el('p', { className: 'hint', textContent: `In ${a.label}, edit your profile, paste the bio${guide.avatar ? ' and pick the new picture' : ''}, save, then come back here.` }));
+
+  const next = el('button', { textContent: index === steps.length - 1 ? 'Done, finish' : `Done, next: ${steps[index + 1].label} →` });
+  next.onclick = () => { guide.index++; renderGuide(); box.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+  const skip = el('button', { className: 'link', textContent: 'Skip', onclick: next.onclick });
+
+  box.replaceChildren(
+    el('div', { className: 'guide-head' }, [
+      brandDot(a.id, 'guide-logo'),
+      el('div', {}, [el('h2', { textContent: a.label }), el('p', { className: 'hint', textContent: `Step ${index + 1} of ${steps.length}` })]),
+      el('button', { className: 'icon-btn', ariaLabel: 'Close guide', textContent: '×', onclick: close.onclick }),
+    ]),
+    progress,
+    el('div', { className: 'tasks' }, tasks),
+    ...tips,
+    el('div', { className: 'guide-foot' }, [skip, next]),
+  );
 }
 
 // ---------- add-account dialog ----------
@@ -366,29 +502,54 @@ $('#apply').addEventListener('click', async () => {
   button.textContent = 'Updating…';
   const list = $('#results');
   list.replaceChildren();
+  const avatar = newAvatar; // keep it for the guide; newAvatar is cleared after auto updates
   try {
     const autoIds = targets.filter((a) => a.kind === 'auto').map((a) => a.id);
     const results = autoIds.length
-      ? await api('/api/apply', { method: 'POST', body: { targets: autoIds, bio: updateBio ? bio : undefined, avatar: newAvatar } })
+      ? await api('/api/apply', { method: 'POST', body: { targets: autoIds, bio: updateBio ? bio : undefined, avatar } })
       : {};
-    for (const a of targets) {
-      if (a.kind === 'manual') {
-        list.append(el('li', {}, [el('span', { textContent: `${a.label}: paste it in yourself` }), el('div', { className: 'actions' }, manualActions(a))]));
-      } else {
-        const r = results[a.id];
-        list.append(el('li', { className: r.ok ? 'ok' : 'bad', textContent: `${a.label}: ${r.message}` }));
-      }
+    for (const id of autoIds) {
+      const r = results[id];
+      list.append(el('li', { className: r.ok ? 'ok' : 'bad', textContent: `${PLATFORMS[id].label}: ${r.message}` }));
     }
     if (autoIds.length) {
       newAvatar = null;
       await refresh(); // show the updated pictures in the circles
     }
+    const manual = targets.filter((a) => a.kind === 'manual');
+    if (manual.length) startGuide(manual, updateBio ? bio : undefined, avatar);
   } catch (err) {
     showError(err.message);
   } finally {
     render();
   }
 });
+
+// ---------- install on home screen ----------
+
+let installPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  // Android/desktop Chrome: show our own Install button instead of the browser's banner.
+  e.preventDefault();
+  installPrompt = e;
+  $('#install').hidden = false;
+});
+$('#install').onclick = async () => {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  await installPrompt.userChoice;
+  installPrompt = null;
+  $('#install').hidden = true;
+};
+
+// iPhone/iPad Safari has no install prompt, so explain the Share → Add to Home Screen steps once.
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+const installed = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+if (isIOS && !installed && !store.get('ph_ios_hint_closed', false)) $('#ios-install').hidden = false;
+$('#ios-install button').onclick = () => {
+  $('#ios-install').hidden = true;
+  store.set('ph_ios_hint_closed', true);
+};
 
 // ---------- start ----------
 

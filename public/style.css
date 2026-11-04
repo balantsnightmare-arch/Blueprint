@@ -244,3 +244,68 @@ dialog::backdrop { background: rgb(8 4 20 / 0.6); backdrop-filter: blur(4px); }
 @media (prefers-reduced-motion: reduce) {
   *, html::before, body::before, body::after { animation: none !important; transition: none !important; }
 }
+
+/* ---------- step-by-step guide ---------- */
+
+.guide {
+  margin-top: 20px; padding: 20px; border-radius: 20px;
+  background: var(--surface); border: 1px solid rgb(167 139 250 / 0.35);
+  box-shadow: var(--shadow), 0 0 32px rgb(124 58 237 / 0.18);
+  display: flex; flex-direction: column; gap: 14px; scroll-margin-top: 16px;
+}
+.guide-head { display: flex; align-items: center; gap: 14px; }
+.guide-head > div { flex: 1; }
+.guide-logo { width: 52px; height: 52px; flex: none; border-radius: 50%; display: grid; place-items: center; box-shadow: inset 0 0 0 1px rgb(196 181 253 / 0.3); }
+.guide-logo .logo-text { font-size: 20px; }
+.progress { height: 6px; border-radius: 99px; background: var(--field); overflow: hidden; }
+.progress span { display: block; height: 100%; background: var(--gradient); transition: width 0.3s; }
+.tasks { display: flex; flex-direction: column; gap: 8px; }
+.task {
+  display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; text-align: left;
+  background: var(--field); color: var(--text); border: 1px solid var(--border); font-weight: 600;
+}
+.task:hover:not(:disabled) { border-color: var(--accent); box-shadow: 0 0 18px rgb(168 85 247 / 0.25); }
+.task-num {
+  width: 28px; height: 28px; flex: none; border-radius: 50%; display: grid; place-items: center;
+  background: var(--gradient); color: #fff; font-size: 14px;
+}
+.task.done { color: var(--muted); }
+.task.done .task-num { background: var(--ok); color: #052e16; }
+.warn { margin: 0; font-size: 13px; color: #fbbf24; }
+.guide-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.guide-foot .link { font-size: 14px; }
+
+/* ---------- install ---------- */
+
+#install { margin-top: 12px; }
+.small { padding: 6px 14px; font-size: 13px; }
+.banner.info { display: flex; align-items: center; justify-content: space-between; gap: 8px; border-color: var(--border); color: var(--text); }
+
+/* ---------- phones ---------- */
+
+main { padding-top: max(40px, env(safe-area-inset-top)); padding-bottom: max(64px, env(safe-area-inset-bottom)); }
+
+@media (pointer: coarse) {
+  button:not(.link):not(.circle), .button { min-height: 44px; }
+}
+
+@media (max-width: 560px) {
+  main { padding-left: 14px; padding-right: 14px; padding-top: max(28px, env(safe-area-inset-top)); }
+  header h1 { font-size: 28px; }
+  .accounts { margin: 28px 0 22px; }
+  .account-row { padding-left: 14px; }
+  .account-row { padding-left: 16px; }
+  .circle { width: 60px; height: 60px; margin-left: -16px; border-width: 3px; }
+  .circle .logo-text { font-size: 24px; }
+  .circle .badge { width: 26px; height: 26px; border-width: 2px; }
+  .circle.add { margin-left: 10px; font-size: 30px; }
+  .editor { padding: 16px; gap: 16px; border-radius: 16px; }
+  .avatar-circle { width: 120px; height: 120px; }
+  .bio-box { min-width: 0; flex-basis: 100%; }
+  .apply-row button { width: 100%; }
+  .results li { flex-direction: column; align-items: flex-start; }
+  .guide { padding: 16px; }
+  .guide-foot { flex-direction: column-reverse; align-items: stretch; }
+  .guide-foot button { width: 100%; }
+  dialog { padding: 16px; }
+}

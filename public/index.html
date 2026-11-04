@@ -2,9 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#0b0816" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#08070c" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Profile Hub" />
   <title>Profile Hub</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" type="image/png" href="icon-192.png" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -12,7 +19,13 @@
     <header>
       <h1>Profile Hub</h1>
       <p class="muted">Change your profile once, update it everywhere.</p>
+      <button id="install" class="secondary small" hidden>Install app</button>
     </header>
+
+    <div id="ios-install" class="banner info" hidden>
+      <span>Add Profile Hub to your home screen: tap <strong>Share</strong>, then <strong>Add to Home Screen</strong>.</span>
+      <button class="icon-btn" aria-label="Dismiss">×</button>
+    </div>
 
     <div id="error" class="banner" hidden></div>
 
@@ -50,6 +63,7 @@
       <button id="apply" disabled>Update profiles</button>
     </div>
     <ul id="results" class="results"></ul>
+    <section id="guide" class="guide" hidden></section>
   </main>
 
   <dialog id="add-dialog">
