@@ -1,21 +1,21 @@
-/* Dark aurora theme: deep violet night with slowly drifting purple light. */
+/* High-contrast near-black theme with a purple tint and a faint drifting aurora. */
 :root {
   color-scheme: dark;
-  --bg: #0b0816;
-  --surface: rgb(24 17 44 / 0.62);
-  --surface-solid: #171029;
-  --field: rgb(255 255 255 / 0.05);
-  --text: #ece8ff;
-  --muted: #a69dc8;
-  --border: rgb(196 181 253 / 0.16);
-  --accent: #b197fc;
-  --accent-2: #e879f9;
+  --bg: #08070c;
+  --surface: #121018;
+  --surface-solid: #16131e;
+  --field: #1c1926;
+  --text: #f4f2f8;
+  --muted: #a39eb1;
+  --border: rgb(255 255 255 / 0.08);
+  --accent: #a78bfa;
+  --accent-2: #c084fc;
   --accent-text: #ffffff;
-  --gradient: linear-gradient(135deg, #7c3aed, #c026d3);
-  --ok: #6ee7b7;
-  --bad: #fb7185;
-  --shadow: 0 6px 24px rgb(0 0 0 / 0.45);
-  --glass: blur(14px) saturate(140%);
+  --gradient: linear-gradient(135deg, #7c3aed, #9333ea);
+  --ok: #4ade80;
+  --bad: #f87171;
+  --shadow: 0 4px 16px rgb(0 0 0 / 0.6);
+  --glass: none;
 }
 
 * { box-sizing: border-box; }
@@ -31,7 +31,16 @@ body {
 }
 
 /* ---------- aurora background ---------- */
-/* Two blurred layers of purple light drift slowly in opposite directions. */
+/* Two faint, blurred layers of purple light drift slowly in opposite directions,
+   kept dim so text stays crisp. A thin shimmering line runs along the top. */
+
+html::before {
+  content: ""; position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 10;
+  background: linear-gradient(90deg, #6d28d9, #c026d3, #6366f1, #6d28d9);
+  background-size: 300% 100%;
+  animation: shimmer 10s linear infinite;
+}
+@keyframes shimmer { to { background-position: 300% 0; } }
 
 body::before, body::after {
   content: ""; position: fixed; inset: -25%; z-index: -1; pointer-events: none;
@@ -39,16 +48,16 @@ body::before, body::after {
 }
 body::before {
   background:
-    radial-gradient(40% 30% at 20% 22%, rgb(139 92 246 / 0.7), transparent 70%),
-    radial-gradient(35% 25% at 82% 28%, rgb(217 70 239 / 0.42), transparent 70%),
-    radial-gradient(45% 32% at 50% 88%, rgb(79 70 229 / 0.55), transparent 70%);
+    radial-gradient(40% 30% at 20% 22%, rgb(139 92 246 / 0.26), transparent 70%),
+    radial-gradient(35% 25% at 82% 28%, rgb(192 38 211 / 0.16), transparent 70%),
+    radial-gradient(45% 32% at 50% 88%, rgb(99 70 229 / 0.2), transparent 70%);
   animation: aurora-a 26s ease-in-out infinite alternate;
 }
 body::after {
   background:
-    radial-gradient(28% 18% at 72% 68%, rgb(45 212 191 / 0.16), transparent 70%),
-    radial-gradient(36% 26% at 45% 50%, rgb(168 85 247 / 0.4), transparent 70%),
-    radial-gradient(30% 20% at 60% 10%, rgb(244 114 182 / 0.18), transparent 70%);
+    radial-gradient(28% 18% at 72% 68%, rgb(45 212 191 / 0.05), transparent 70%),
+    radial-gradient(36% 26% at 45% 50%, rgb(168 85 247 / 0.14), transparent 70%),
+    radial-gradient(30% 20% at 60% 10%, rgb(244 114 182 / 0.07), transparent 70%);
   animation: aurora-b 34s ease-in-out infinite alternate;
 }
 @keyframes aurora-a {
@@ -62,14 +71,7 @@ body::after {
 
 main { max-width: 760px; margin: 0 auto; padding: 40px 16px 64px; }
 header { text-align: center; }
-header h1 {
-  margin: 0; font-size: 34px; letter-spacing: -0.02em;
-  background: linear-gradient(90deg, #c4b5fd, #f0abfc, #a5b4fc, #c4b5fd);
-  background-size: 300% 100%;
-  -webkit-background-clip: text; background-clip: text; color: transparent;
-  animation: shimmer 14s linear infinite;
-}
-@keyframes shimmer { to { background-position: 300% 0; } }
+header h1 { margin: 0; font-size: 34px; letter-spacing: -0.02em; color: #fff; }
 
 h2 { font-size: 18px; margin: 0; }
 .muted, .hint { color: var(--muted); }
@@ -240,5 +242,5 @@ dialog::backdrop { background: rgb(8 4 20 / 0.6); backdrop-filter: blur(4px); }
 
 /* Respect people who turn off animations in their system settings. */
 @media (prefers-reduced-motion: reduce) {
-  *, body::before, body::after { animation: none !important; transition: none !important; }
+  *, html::before, body::before, body::after { animation: none !important; transition: none !important; }
 }
