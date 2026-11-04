@@ -1,8 +1,7 @@
 // "auto" platforms are updated by the server. "manual" ones can't be edited by
 // apps, so we just help you copy your bio/picture and open their settings page.
 // Ordered from most to least popular (roughly, by monthly users).
-// Logos are from Simple Icons (public/icons, CC0). LinkedIn isn't in that set,
-// so it uses a text mark instead.
+// Logos come from logos.js. LinkedIn isn't in that set, so it uses a text mark.
 const MANUAL = 'Copy & paste helper';
 const PLATFORMS = {
   facebook: { label: 'Facebook', kind: 'manual', color: '#0866FF', bioLimit: 101, settingsUrl: 'https://www.facebook.com/me', blurb: MANUAL },
@@ -67,14 +66,21 @@ function el(tag, props = {}, children = []) {
   return node;
 }
 
-// The platform's logo, tinted with CSS mask so it can sit on its brand color.
+// The platform's logo as an inline SVG, drawn in the circle's text color.
 function logo(id) {
   const p = PLATFORMS[id];
   if (p.text) return el('span', { className: 'logo-text', textContent: p.text });
-  const mark = el('span', { className: 'logo', role: 'img', ariaLabel: p.label });
-  mark.style.setProperty('--icon', `url(icons/${id}.svg)`);
-  mark.style.background = p.fg ?? '#fff';
-  return mark;
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('class', 'logo');
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', p.label);
+  const path = document.createElementNS(svgNS, 'path');
+  path.setAttribute('d', LOGOS[id]);
+  path.setAttribute('fill', 'currentColor');
+  svg.append(path);
+  return svg;
 }
 
 function brandDot(id, className) {
@@ -208,7 +214,9 @@ function renderPlatformList() {
   const query = $('#platform-search').value.trim().toLowerCase();
   const linked = new Set(accounts().map((a) => a.id));
   list.replaceChildren();
-  for (const [id, p] of Object.entries(PLATFORMS)) {
+  // Manual apps first, then auto ones; each group keeps the popularity order.
+  const entries = Object.entries(PLATFORMS).sort(([, a], [, b]) => (a.kind === 'manual' ? 0 : 1) - (b.kind === 'manual' ? 0 : 1));
+  for (const [id, p] of entries) {
     if (linked.has(id) || !p.label.toLowerCase().includes(query)) continue;
     const unavailable = id === 'youtube' && !status.youtube?.configured;
     const tag = el('span', {

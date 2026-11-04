@@ -98,12 +98,8 @@ textarea { resize: vertical; }
   display: grid; place-items: center; font-size: 13px;
 }
 
-/* Brand logos: a single-color SVG used as a mask, filled with the logo color. */
-.logo {
-  display: block; width: 50%; height: 50%;
-  -webkit-mask: var(--icon) center / contain no-repeat;
-  mask: var(--icon) center / contain no-repeat;
-}
+/* Brand logos: inline single-color SVGs that take the circle's text color. */
+.logo { display: block; width: 50%; height: 50%; }
 .logo-text { font-family: Arial, sans-serif; font-weight: 700; font-size: 0.5em; letter-spacing: -0.02em; }
 .circle .logo-text { font-size: 38px; }
 .badge .logo-text, .platform .dot .logo-text { font-size: 15px; }
