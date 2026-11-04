@@ -326,3 +326,16 @@ main { padding-top: max(40px, env(safe-area-inset-top)); padding-bottom: max(64p
 .choose-item small { color: var(--muted); }
 .choose-item small.warn { color: #fbbf24; }
 .choose-foot button { flex: 1; }
+
+/* An auto app that's shown but not connected yet: faded, with a + badge. */
+.circle.pending > :first-child { opacity: 0.45; }
+.circle.pending { background-blend-mode: normal; filter: saturate(0.6); }
+.circle.pending::after {
+  content: "+"; position: absolute; right: -2px; bottom: -2px; width: 28px; height: 28px;
+  border-radius: 50%; border: 3px solid var(--bg); background: var(--gradient); color: #fff;
+  display: grid; place-items: center; font-size: 18px; font-weight: 700; line-height: 1;
+}
+.choose-item:has(input:disabled) { cursor: default; }
+@media (max-width: 560px) {
+  .circle.pending::after { width: 22px; height: 22px; font-size: 14px; border-width: 2px; }
+}

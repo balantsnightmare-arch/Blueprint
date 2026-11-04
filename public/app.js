@@ -38,7 +38,12 @@ const store = {
 
 let status = {};
 let profiles = {};
-let manualAdded = store.get('ph_manual', []); // e.g. ['instagram']
+// Apps shown as circles. New visitors start with a popular set; a connected
+// auto app always shows even if it isn't in this list.
+const DEFAULT_APPS = ['youtube', 'instagram', 'tiktok', 'discord'];
+let pinned = store.get('ph_apps', null) ?? store.get('ph_manual', null) ?? DEFAULT_APPS;
+const savePinned = () => store.set('ph_apps', pinned);
+const pin = (id) => { if (!pinned.includes(id)) { pinned = [...pinned, id]; savePinned(); } };
 let excluded = new Set(store.get('ph_excluded', [])); // accounts left out of updates
 let activeId = null; // circle whose details are open
 let newAvatar = null; // data URL of a picture the user picked
@@ -95,12 +100,13 @@ function brandDot(id, className) {
 function accounts() {
   const list = [];
   for (const [id, p] of Object.entries(PLATFORMS)) {
-    const linked = p.kind === 'auto' ? status[id]?.connected : manualAdded.includes(id);
-    if (!linked) continue;
+    const connected = p.kind === 'auto' && Boolean(status[id]?.connected);
+    if (!connected && !pinned.includes(id)) continue;
+    // An auto app that's pinned but not connected yet shows as a faded circle you can tap to connect.
+    const ready = p.kind === 'manual' || connected;
     const profile = profiles[id] ?? {};
-    const name =
-      id === 'bluesky' ? `@${status.bluesky.handle}` : id === 'youtube' ? status.youtube.channelTitle : p.label;
-    list.push({ id, ...p, name, avatar: profile.avatar, included: !excluded.has(id) });
+    const name = !connected ? p.label : id === 'bluesky' ? `@${status.bluesky.handle}` : status.youtube.channelTitle;
+    list.push({ id, ...p, name, ready, avatar: profile.avatar, included: ready && !excluded.has(id) });
   }
   return list;
 }
@@ -125,7 +131,7 @@ function render() {
   renderDetail();
   renderAvatar();
   updateBioCount();
-  $('#apply').disabled = accounts().length === 0;
+  $('#apply').disabled = !accounts().some((a) => a.ready);
   $('#apply').textContent = 'Update profiles';
 }
 
@@ -136,8 +142,8 @@ function renderCircles() {
 
   for (const a of list) {
     const circle = el('button', {
-      className: `circle${a.included ? '' : ' excluded'}${a.id === activeId ? ' active' : ''}`,
-      title: `${a.label}: ${a.name}`,
+      className: `circle${a.ready ? (a.included ? '' : ' excluded') : ' pending'}${a.id === activeId ? ' active' : ''}`,
+      title: a.ready ? `${a.label}: ${a.name}` : `${a.label}: tap to connect`,
       onclick: () => {
         activeId = activeId === a.id ? null : a.id;
         render();
@@ -161,6 +167,34 @@ function renderDetail() {
   box.hidden = !a;
   if (!a) return;
 
+  const connected = a.kind === 'auto' && a.ready;
+
+  // Remove takes the circle away entirely (and logs out of auto apps).
+  const remove = el('button', { className: 'danger', textContent: 'Remove' });
+  remove.onclick = async () => {
+    if (connected) await api(`/api/${a.id}/disconnect`, { method: 'POST' });
+    pinned = pinned.filter((id) => id !== a.id);
+    savePinned();
+    activeId = null;
+    await refresh();
+  };
+
+  const title = el('div', { className: 'title' }, [
+    el('strong', { textContent: a.label }),
+    el('span', { className: 'muted', textContent: !a.ready ? 'Not connected' : a.kind === 'manual' ? 'Manual' : a.name }),
+  ]);
+
+  if (!a.ready) {
+    const available = a.id !== 'youtube' || status.youtube?.configured;
+    const connect = el('button', { textContent: `Connect ${a.label}`, disabled: !available, onclick: () => connectAuto(a.id) });
+    box.replaceChildren(
+      title,
+      el('p', { className: 'hint', textContent: available ? a.blurb : `${a.label} isn't set up on this server yet, so it can't be connected.` }),
+      el('div', { className: 'actions' }, [connect, remove]),
+    );
+    return;
+  }
+
   const toggle = el('input', { type: 'checkbox', checked: a.included });
   toggle.onchange = () => {
     toggle.checked ? excluded.delete(a.id) : excluded.add(a.id);
@@ -168,26 +202,30 @@ function renderDetail() {
     render();
   };
 
-  const remove = el('button', { className: 'danger', textContent: a.kind === 'auto' ? 'Disconnect' : 'Remove' });
-  remove.onclick = async () => {
-    if (a.kind === 'auto') await api(`/api/${a.id}/disconnect`, { method: 'POST' });
-    else {
-      manualAdded = manualAdded.filter((id) => id !== a.id);
-      store.set('ph_manual', manualAdded);
-    }
-    activeId = null;
-    await refresh();
-  };
-
   const actions = el('div', { className: 'actions' }, a.kind === 'manual' ? manualActions(a) : []);
+  if (connected) {
+    // Disconnect logs out but keeps the circle, so it's easy to reconnect.
+    const disconnect = el('button', { className: 'secondary', textContent: 'Disconnect' });
+    disconnect.onclick = async () => {
+      pin(a.id);
+      await api(`/api/${a.id}/disconnect`, { method: 'POST' });
+      await refresh();
+    };
+    actions.append(disconnect);
+  }
   actions.append(remove);
 
-  box.replaceChildren(
-    el('div', { className: 'title' }, [el('strong', { textContent: a.label }), el('span', { className: 'muted', textContent: a.name === a.label ? 'Manual' : a.name })]),
-    el('p', { className: 'hint', textContent: a.blurb }),
-    el('label', { className: 'check' }, [toggle, ' Include when updating']),
-    actions,
-  );
+  box.replaceChildren(title, el('p', { className: 'hint', textContent: a.blurb }), el('label', { className: 'check' }, [toggle, ' Include when updating']), actions);
+}
+
+function connectAuto(id) {
+  pin(id);
+  if (id === 'youtube') {
+    location.href = '/auth/youtube';
+  } else {
+    openAddDialog();
+    addPlatform(id);
+  }
 }
 
 // ---------- helpers for manual apps ----------
@@ -393,10 +431,10 @@ function addPlatform(id) {
     $('#bluesky-form').hidden = false;
     $('#bluesky-form').handle.focus();
   } else if (id === 'youtube') {
+    pin(id);
     location.href = '/auth/youtube';
   } else {
-    manualAdded.push(id);
-    store.set('ph_manual', manualAdded);
+    pin(id);
     dialog.close();
     render();
   }
@@ -420,6 +458,7 @@ $('#bluesky-form').addEventListener('submit', async (e) => {
     form.reset();
     dialog.close();
     showError('');
+    pin('bluesky');
     await refresh();
   } catch (err) {
     showError(err.message);
@@ -499,7 +538,7 @@ function updateChooserButton() {
   btn.disabled = n === 0;
   btn.textContent = n ? `Update ${n} app${n === 1 ? '' : 's'}` : 'Pick at least one app';
   const all = chooser.querySelector('[data-toggle-all]');
-  all.textContent = n === accounts().length ? 'Select none' : 'Select all';
+  all.textContent = n === accounts().filter((a) => a.ready).length ? 'Select none' : 'Select all';
 }
 
 function openChooser() {
@@ -508,10 +547,12 @@ function openChooser() {
   const list = chooser.querySelector('.choose-list');
   list.replaceChildren();
   for (const a of accounts()) {
-    const box = el('input', { type: 'checkbox', value: a.id, checked: a.included });
+    const box = el('input', { type: 'checkbox', value: a.id, checked: a.included, disabled: !a.ready });
     box.onchange = updateChooserButton;
-    const over = updateBio && a.bioLimit && countChars(bio) > a.bioLimit;
-    const note = over ? `Bio too long (max ${a.bioLimit})` : a.kind === 'auto' ? 'Updates automatically' : 'Guided copy & paste';
+    const over = a.ready && updateBio && a.bioLimit && countChars(bio) > a.bioLimit;
+    const note = !a.ready
+      ? 'Not connected yet. Tap its circle to connect'
+      : over ? `Bio too long (max ${a.bioLimit})` : a.kind === 'auto' ? 'Updates automatically' : 'Guided copy & paste';
     list.append(
       el('label', { className: 'choose-item' }, [
         box,
@@ -532,7 +573,7 @@ $('#apply').addEventListener('click', () => {
 });
 
 chooser.querySelector('[data-toggle-all]').onclick = () => {
-  const boxes = chooser.querySelectorAll('.choose-list input');
+  const boxes = chooser.querySelectorAll('.choose-list input:not(:disabled)');
   const selectAll = chosenIds().length !== boxes.length;
   boxes.forEach((b) => (b.checked = selectAll));
   updateChooserButton();
