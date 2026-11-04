@@ -339,3 +339,9 @@ main { padding-top: max(40px, env(safe-area-inset-top)); padding-bottom: max(64p
 @media (max-width: 560px) {
   .circle.pending::after { width: 22px; height: 22px; font-size: 14px; border-width: 2px; }
 }
+
+/* ---------- footer ---------- */
+
+.page-foot { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--border); text-align: center; }
+.danger-link { color: var(--bad); font-size: 13px; opacity: 0.8; }
+.danger-link:hover { opacity: 1; text-decoration: underline; }

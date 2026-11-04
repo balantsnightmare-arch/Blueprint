@@ -626,6 +626,32 @@ async function runUpdate(targets, updateBio, bio) {
   }
 }
 
+// ---------- reset ----------
+// Puts Profile Hub back to how a brand-new visitor sees it: logs out of
+// connected apps, forgets saved choices, and clears the editor.
+
+$('#reset').onclick = async () => {
+  if (!confirm('Reset Profile Hub? This disconnects your accounts, brings back the default apps, and clears your bio and picture. Your real profiles on each app are not changed.')) return;
+  for (const [id, s] of Object.entries(status)) {
+    if (s.connected) await api(`/api/${id}/disconnect`, { method: 'POST' }).catch(() => {});
+  }
+  ['ph_apps', 'ph_manual', 'ph_excluded', 'ph_ios_hint_closed'].forEach((key) => {
+    try { localStorage.removeItem(key); } catch {}
+  });
+  pinned = DEFAULT_APPS;
+  excluded = new Set();
+  activeId = null;
+  newAvatar = null;
+  guide = null;
+  $('#bio').value = '';
+  $('#update-bio').checked = true;
+  $('#results').replaceChildren();
+  showError('');
+  renderGuide();
+  await refresh();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+
 // ---------- install on home screen ----------
 
 let installPrompt = null;
