@@ -125,9 +125,8 @@ function render() {
   renderDetail();
   renderAvatar();
   updateBioCount();
-  const n = included().length;
-  $('#apply').disabled = n === 0;
-  $('#apply').textContent = n ? `Update ${n} profile${n === 1 ? '' : 's'}` : 'Update profiles';
+  $('#apply').disabled = accounts().length === 0;
+  $('#apply').textContent = 'Update profiles';
 }
 
 function renderCircles() {
@@ -152,7 +151,7 @@ function renderCircles() {
   }
 
   $('#account-hint').textContent = list.length
-    ? 'Tap a circle to manage it. Faded ones are skipped when you update.'
+    ? 'Tap a circle to manage it. Faded ones start unticked when you update.'
     : 'Tap + to link your first account.';
 }
 
@@ -486,16 +485,77 @@ $('#avatar-undo').onclick = () => {
   render();
 };
 
-$('#apply').addEventListener('click', async () => {
-  const targets = included();
-  const updateBio = $('#update-bio').checked;
-  if (!updateBio && !newAvatar) return showError('Nothing to update: choose a new picture or tick "Update bio".');
+// ---------- choose which apps to update ----------
 
+const chooser = $('#choose-dialog');
+
+function chosenIds() {
+  return [...chooser.querySelectorAll('.choose-list input:checked')].map((i) => i.value);
+}
+
+function updateChooserButton() {
+  const n = chosenIds().length;
+  const btn = chooser.querySelector('[data-confirm]');
+  btn.disabled = n === 0;
+  btn.textContent = n ? `Update ${n} app${n === 1 ? '' : 's'}` : 'Pick at least one app';
+  const all = chooser.querySelector('[data-toggle-all]');
+  all.textContent = n === accounts().length ? 'Select none' : 'Select all';
+}
+
+function openChooser() {
   const bio = $('#bio').value;
-  // Only block on apps we update ourselves; manual ones just show a warning in the counter.
-  const tooLong = targets.filter((a) => updateBio && a.kind === 'auto' && countChars(bio) > a.bioLimit);
-  if (tooLong.length) return showError(`Bio is too long for ${tooLong.map((a) => a.label).join(', ')}.`);
+  const updateBio = $('#update-bio').checked;
+  const list = chooser.querySelector('.choose-list');
+  list.replaceChildren();
+  for (const a of accounts()) {
+    const box = el('input', { type: 'checkbox', value: a.id, checked: a.included });
+    box.onchange = updateChooserButton;
+    const over = updateBio && a.bioLimit && countChars(bio) > a.bioLimit;
+    const note = over ? `Bio too long (max ${a.bioLimit})` : a.kind === 'auto' ? 'Updates automatically' : 'Guided copy & paste';
+    list.append(
+      el('label', { className: 'choose-item' }, [
+        box,
+        brandDot(a.id, 'dot'),
+        el('span', { className: 'grow' }, [el('strong', { textContent: a.label }), el('small', { className: over ? 'warn' : '', textContent: note })]),
+        el('span', { className: `kind ${a.kind}`, textContent: a.kind === 'auto' ? 'Auto' : 'Manual' }),
+      ]),
+    );
+  }
+  updateChooserButton();
+  chooser.showModal();
+}
 
+$('#apply').addEventListener('click', () => {
+  if (!$('#update-bio').checked && !newAvatar) return showError('Nothing to update: choose a new picture or tick "Update bio".');
+  showError('');
+  openChooser();
+});
+
+chooser.querySelector('[data-toggle-all]').onclick = () => {
+  const boxes = chooser.querySelectorAll('.choose-list input');
+  const selectAll = chosenIds().length !== boxes.length;
+  boxes.forEach((b) => (b.checked = selectAll));
+  updateChooserButton();
+};
+chooser.querySelector('[data-cancel]').onclick = () => chooser.close();
+chooser.addEventListener('click', (e) => e.target === chooser && chooser.close()); // click backdrop to close
+
+chooser.querySelector('[data-confirm]').onclick = () => {
+  const ids = new Set(chosenIds());
+  const targets = accounts().filter((a) => ids.has(a.id));
+  const updateBio = $('#update-bio').checked;
+  const bio = $('#bio').value;
+  // Only block on apps we update ourselves; manual ones just get a warning in the guide.
+  const tooLong = targets.filter((a) => updateBio && a.kind === 'auto' && countChars(bio) > a.bioLimit);
+  if (tooLong.length) {
+    chooser.close();
+    return showError(`Bio is too long for ${tooLong.map((a) => a.label).join(', ')}. Shorten it or untick those apps.`);
+  }
+  chooser.close();
+  runUpdate(targets, updateBio, bio);
+};
+
+async function runUpdate(targets, updateBio, bio) {
   showError('');
   const button = $('#apply');
   button.disabled = true;
@@ -523,7 +583,7 @@ $('#apply').addEventListener('click', async () => {
   } finally {
     render();
   }
-});
+}
 
 // ---------- install on home screen ----------
 

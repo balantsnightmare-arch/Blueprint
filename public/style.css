@@ -309,3 +309,20 @@ main { padding-top: max(40px, env(safe-area-inset-top)); padding-bottom: max(64p
   .guide-foot button { width: 100%; }
   dialog { padding: 16px; }
 }
+
+/* ---------- choose which apps to update ---------- */
+
+.choose-list { display: flex; flex-direction: column; gap: 8px; max-height: min(420px, 55vh); overflow-y: auto; margin-bottom: 16px; }
+.choose-item {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px; cursor: pointer;
+  background: var(--field); border: 1px solid var(--border); border-radius: 12px;
+}
+.choose-item:has(input:checked) { border-color: rgb(167 139 250 / 0.6); }
+.choose-item:not(:has(input:checked)) { opacity: 0.55; }
+.choose-item input { width: 20px; height: 20px; flex: none; accent-color: #a855f7; }
+.choose-item .dot { width: 36px; height: 36px; flex: none; border-radius: 50%; display: grid; place-items: center; font-weight: 700; box-shadow: inset 0 0 0 1px rgb(196 181 253 / 0.3); }
+.choose-item .dot .logo-text { font-size: 15px; }
+.choose-item strong { display: block; }
+.choose-item small { color: var(--muted); }
+.choose-item small.warn { color: #fbbf24; }
+.choose-foot button { flex: 1; }
