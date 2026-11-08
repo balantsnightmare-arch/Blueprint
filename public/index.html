@@ -96,6 +96,17 @@
             <option value="public">Public</option>
           </select>
           <p class="hint">Until Google approves this app, YouTube may keep new uploads private.</p>
+          <span class="label">YouTube thumbnail <span class="hint">(optional)</span></span>
+          <div class="thumb-row">
+            <label class="thumb-pick" title="Choose a thumbnail">
+              <input id="thumb-input" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+              <img id="thumb-img" alt="Thumbnail preview" hidden />
+              <span id="thumb-empty">+ Add thumbnail</span>
+            </label>
+            <button id="thumb-remove" class="link" hidden>Remove</button>
+          </div>
+          <p id="shorts-note" class="warn" hidden>This looks like a YouTube Short (vertical and under 3 minutes). YouTube doesn't allow custom thumbnails on Shorts, so it may be ignored.</p>
+          <p class="hint">Custom thumbnails need a verified YouTube channel: <a href="https://www.youtube.com/verify" target="_blank" rel="noopener">youtube.com/verify</a>.</p>
         </div>
       </section>
 

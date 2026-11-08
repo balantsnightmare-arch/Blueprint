@@ -909,6 +909,7 @@ function setVideo(file) {
   else preview.removeAttribute('src');
   $('#video-info').textContent = file ? `${file.name} · ${formatSize(file.size)}` : '';
   renderPost();
+  renderThumb();
 }
 
 $('#video-preview').addEventListener('loadedmetadata', (e) => {
@@ -916,7 +917,67 @@ $('#video-preview').addEventListener('loadedmetadata', (e) => {
   videoMeta = { width: v.videoWidth, height: v.videoHeight, duration: v.duration };
   const shape = v.videoHeight > v.videoWidth ? 'vertical' : v.videoHeight < v.videoWidth ? 'horizontal' : 'square';
   if (videoFile) $('#video-info').textContent = `${videoFile.name} · ${formatSize(videoFile.size)} · ${formatTime(v.duration)} · ${shape}`;
+  renderThumb();
 });
+
+// ---------- YouTube thumbnail ----------
+
+let thumbnail = null; // data URL, 1280x720 JPEG
+
+// YouTube treats vertical or square videos up to 3 minutes as Shorts.
+const looksLikeShort = () => Boolean(videoMeta && videoMeta.height >= videoMeta.width && videoMeta.duration <= 180);
+
+function renderThumb() {
+  $('#thumb-img').hidden = !thumbnail;
+  if (thumbnail) $('#thumb-img').src = thumbnail;
+  $('#thumb-empty').hidden = Boolean(thumbnail);
+  $('#thumb-remove').hidden = !thumbnail;
+  $('#shorts-note').hidden = !(thumbnail && looksLikeShort());
+}
+
+// Crop to 16:9 and size to 1280x720, YouTube's recommended thumbnail size,
+// keeping it under YouTube's 2 MB limit.
+function makeThumbnail(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1280;
+      canvas.height = 720;
+      const scale = Math.max(1280 / img.width, 720 / img.height);
+      const w = img.width * scale;
+      const h = img.height * scale;
+      canvas.getContext('2d').drawImage(img, (1280 - w) / 2, (720 - h) / 2, w, h);
+      URL.revokeObjectURL(img.src);
+      let quality = 0.92;
+      let data = canvas.toDataURL('image/jpeg', quality);
+      while (data.length * 0.75 > 2 * 1024 * 1024 && quality > 0.5) {
+        quality -= 0.1;
+        data = canvas.toDataURL('image/jpeg', quality);
+      }
+      resolve(data);
+    };
+    img.onerror = () => reject(new Error("Couldn't read that image."));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+$('#thumb-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    thumbnail = await makeThumbnail(file);
+    renderThumb();
+  } catch (err) {
+    showError(err.message);
+  }
+});
+
+$('#thumb-remove').onclick = () => {
+  thumbnail = null;
+  renderThumb();
+};
 
 $('#video-input').addEventListener('change', (e) => {
   const file = e.target.files[0];
@@ -999,7 +1060,15 @@ async function runPost(targets) {
       setPostProgress(0.95, `Posting to ${auto.map((a) => a.label).join(' and ')}… big videos can take a minute.`);
       const results = await api('/api/post-video', {
         method: 'POST',
-        body: { uploadId: id, targets: auto.map((a) => a.id), title, caption, privacy, aspectRatio: videoMeta },
+        body: {
+          uploadId: id,
+          targets: auto.map((a) => a.id),
+          title,
+          caption,
+          privacy,
+          aspectRatio: videoMeta,
+          thumbnail: auto.some((a) => a.id === 'youtube') ? thumbnail : null,
+        },
       });
       for (const a of auto) {
         const r = results[a.id] ?? { ok: false, message: 'No response.' };
@@ -1045,6 +1114,8 @@ $('#reset').onclick = async () => {
   $('#video-title').value = '';
   $('#video-caption').value = '';
   $('#yt-privacy').value = 'private';
+  thumbnail = null;
+  renderThumb();
   $('#post-results').replaceChildren();
   showTab('profile');
   showError('');

@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import express from 'express';
 import { AtpAgent } from '@atproto/api';
@@ -327,7 +328,25 @@ app.post('/upload/video', async (req, res) => {
   res.json({ ok: true, id: req.session.upload.id, size });
 });
 
-async function postYoutubeVideo({ auth }, video, { title, caption, privacy }) {
+// Sets a custom thumbnail. YouTube only allows this on verified channels, and
+// not on Shorts, so a failure here shouldn't count against the upload itself.
+async function setYoutubeThumbnail(yt, videoId, thumbnail) {
+  const match = /^data:(image\/(?:png|jpeg));base64,(.+)$/.exec(thumbnail);
+  if (!match) return ' The thumbnail must be a PNG or JPEG, so it was skipped.';
+  const bytes = Buffer.from(match[2], 'base64');
+  if (bytes.length > 2 * 1024 * 1024) return ' The thumbnail is over 2 MB, so it was skipped.';
+  try {
+    await yt.thumbnails.set({ videoId, media: { mimeType: match[1], body: Readable.from(bytes) } });
+    return ' Thumbnail set.';
+  } catch (err) {
+    const why = /forbidden|permission|verif/i.test(err.message)
+      ? 'custom thumbnails need a verified channel (youtube.com/verify)'
+      : err.message;
+    return ` The thumbnail wasn't set: ${why}.`;
+  }
+}
+
+async function postYoutubeVideo({ auth }, video, { title, caption, privacy, thumbnail }) {
   const yt = google.youtube({ version: 'v3', auth });
   const { data } = await yt.videos.insert({
     part: ['snippet', 'status'],
@@ -337,8 +356,9 @@ async function postYoutubeVideo({ auth }, video, { title, caption, privacy }) {
     },
     media: { mimeType: video.type, body: fs.createReadStream(video.file) },
   });
+  const thumbNote = thumbnail ? await setYoutubeThumbnail(yt, data.id, thumbnail) : '';
   const note = privacy !== 'private' ? " If it shows as private, that's Google's rule for apps that haven't been verified yet." : '';
-  return { message: `Uploaded.${note}`, url: `https://youtu.be/${data.id}` };
+  return { message: `Uploaded.${thumbNote}${note}`, url: `https://youtu.be/${data.id}` };
 }
 
 async function postBlueskyVideo({ agent }, video, { caption, aspectRatio }) {
@@ -360,7 +380,7 @@ async function postBlueskyVideo({ agent }, video, { caption, aspectRatio }) {
 const videoPosters = { youtube: postYoutubeVideo, bluesky: postBlueskyVideo };
 
 app.post('/api/post-video', async (req, res) => {
-  const { uploadId, targets = [], title, caption, privacy, aspectRatio } = req.body ?? {};
+  const { uploadId, targets = [], title, caption, privacy, aspectRatio, thumbnail } = req.body ?? {};
   const video = req.session.upload;
   if (!video || video.id !== uploadId) return res.status(400).json({ error: 'The video upload expired. Please post again.' });
   const results = {};
@@ -376,7 +396,7 @@ app.post('/api/post-video', async (req, res) => {
       continue;
     }
     try {
-      results[target] = { ok: true, ...(await videoPosters[target](connection, video, { title, caption, privacy, aspectRatio })) };
+      results[target] = { ok: true, ...(await videoPosters[target](connection, video, { title, caption, privacy, aspectRatio, thumbnail })) };
     } catch (err) {
       const quota = /quota/i.test(err.message);
       results[target] = { ok: false, message: quota ? "YouTube's daily upload limit for this app was reached. Try again tomorrow." : err.message };
