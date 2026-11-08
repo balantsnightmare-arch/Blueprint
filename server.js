@@ -17,7 +17,7 @@ const BASE_URL = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || `
 const SESSION_COOKIE = 'ph_sid';
 const SESSION_IDLE_MS = 2 * 60 * 60 * 1000; // 2 hours
 const MAX_SESSIONS = 1000;
-const sessions = new Map(); // sid -> { bluesky, youtube, youtubeOAuthState, lastSeen }
+const sessions = new Map(); // sid -> { bluesky, youtube, lastSeen }
 
 function readCookie(req, name) {
   for (const part of (req.headers.cookie ?? '').split(';')) {
@@ -25,6 +25,12 @@ function readCookie(req, name) {
     if (key === name) return decodeURIComponent(rest.join('='));
   }
   return null;
+}
+
+// append (not setHeader) so several cookies can be set on one response.
+function setCookie(req, res, name, value, { path = '/', maxAge }) {
+  const secure = req.secure ? '; Secure' : '';
+  res.append('Set-Cookie', `${name}=${value}; Path=${path}; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`);
 }
 
 function sessionMiddleware(req, res, next) {
@@ -37,10 +43,9 @@ function sessionMiddleware(req, res, next) {
       sessions.delete(oldest[0]);
     }
     sid = crypto.randomBytes(32).toString('base64url');
-    session = { bluesky: null, youtube: null, youtubeOAuthState: null, lastSeen: Date.now() };
+    session = { bluesky: null, youtube: null, lastSeen: Date.now() };
     sessions.set(sid, session);
-    const secure = req.secure ? '; Secure' : '';
-    res.setHeader('Set-Cookie', `${SESSION_COOKIE}=${sid}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_IDLE_MS / 1000}${secure}`);
+    setCookie(req, res, SESSION_COOKIE, sid, { maxAge: SESSION_IDLE_MS / 1000 });
   }
   session.lastSeen = Date.now();
   req.session = session;
@@ -124,23 +129,41 @@ app.post('/api/bluesky/disconnect', (req, res) => {
 
 // ---------- YouTube ----------
 
+// The OAuth state lives in a short-lived cookie rather than server memory, so a
+// sign-in still works if the server restarts (or a deploy swaps servers) while
+// the person is on Google's page.
+const OAUTH_COOKIE = 'ph_oauth_state';
+const OAUTH_COOKIE_PATH = '/auth/youtube';
+
+const backWithError = (res, message) => res.redirect('/?error=' + encodeURIComponent(message));
+
 app.get('/auth/youtube', (req, res) => {
-  if (!youtubeConfigured()) return res.status(400).send('YouTube is not set up on this server yet.');
-  req.session.youtubeOAuthState = crypto.randomBytes(16).toString('hex');
+  if (!youtubeConfigured()) return backWithError(res, 'YouTube is not set up on this server yet.');
+  const state = crypto.randomBytes(16).toString('hex');
+  setCookie(req, res, OAUTH_COOKIE, state, { path: OAUTH_COOKIE_PATH, maxAge: 10 * 60 });
   const url = newYoutubeAuth().generateAuthUrl({
     access_type: 'online',
     scope: ['https://www.googleapis.com/auth/youtube'],
-    state: req.session.youtubeOAuthState,
+    state,
     prompt: 'select_account',
   });
   res.redirect(url);
 });
 
+function sameState(a, b) {
+  if (!a || !b || a.length !== b.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
+
 app.get('/auth/youtube/callback', async (req, res) => {
   const { code, state, error } = req.query;
-  if (error) return res.redirect('/?error=' + encodeURIComponent(`YouTube: ${error}`));
-  if (!state || state !== req.session.youtubeOAuthState) return res.status(400).send('Invalid OAuth state. Try connecting again.');
-  req.session.youtubeOAuthState = null;
+  const expected = readCookie(req, OAUTH_COOKIE);
+  setCookie(req, res, OAUTH_COOKIE, '', { path: OAUTH_COOKIE_PATH, maxAge: 0 }); // one use only
+  if (error === 'access_denied') return backWithError(res, 'YouTube: you cancelled the sign-in, so nothing was connected.');
+  if (error) return backWithError(res, `YouTube: ${error}`);
+  if (typeof state !== 'string' || !sameState(state, expected)) {
+    return backWithError(res, 'YouTube sign-in expired or was started twice. Tap Connect YouTube to try again.');
+  }
   try {
     const auth = newYoutubeAuth();
     const { tokens } = await auth.getToken(code);
@@ -151,7 +174,10 @@ app.get('/auth/youtube/callback', async (req, res) => {
     req.session.youtube = { auth, channelTitle: data.items[0].snippet.title };
     res.redirect('/');
   } catch (err) {
-    res.redirect('/?error=' + encodeURIComponent(`YouTube: ${err.message}`));
+    const message = /invalid_grant/i.test(err.message)
+      ? 'That YouTube sign-in link was already used. Tap Connect YouTube to try again.'
+      : `YouTube: ${err.message}`;
+    backWithError(res, message);
   }
 });
 
