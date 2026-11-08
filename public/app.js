@@ -45,6 +45,14 @@ let pinned = store.get('ph_apps', null) ?? store.get('ph_manual', null) ?? DEFAU
 const savePinned = () => store.set('ph_apps', pinned);
 const pin = (id) => { if (!pinned.includes(id)) { pinned = [...pinned, id]; savePinned(); } };
 let excluded = new Set(store.get('ph_excluded', [])); // accounts left out of updates
+// Small copies of the picture you last set on each manual app, since those apps
+// don't let us read your real profile picture. Kept tiny so storage stays small.
+let circlePics = store.get('ph_pics', {});
+function setCirclePic(id, dataUrl) {
+  if (dataUrl) circlePics[id] = dataUrl;
+  else delete circlePics[id];
+  store.set('ph_pics', circlePics);
+}
 let activeId = null; // circle whose details are open
 let newAvatar = null; // data URL of a picture the user picked
 let currentAvatar = null; // picture from a connected account
@@ -110,7 +118,8 @@ function accounts() {
     const ready = p.kind === 'manual' || connected;
     const profile = profiles[id] ?? {};
     const name = !connected ? p.label : id === 'bluesky' ? `@${status.bluesky.handle}` : status.youtube.channelTitle;
-    list.push({ id, ...p, name, ready, avatar: profile.avatar, included: ready && !excluded.has(id) });
+    const avatar = profile.avatar ?? (p.kind === 'manual' ? circlePics[id] : undefined);
+    list.push({ id, ...p, name, ready, avatar, included: ready && !excluded.has(id) });
   }
   return list;
 }
@@ -319,6 +328,24 @@ function renderDetail() {
   };
 
   const actions = el('div', { className: 'actions' }, a.kind === 'manual' ? manualActions(a) : []);
+  if (a.kind === 'manual') {
+    // Let people pick what this circle shows, e.g. a screenshot of their current picture.
+    const picker = el('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp', hidden: true });
+    picker.onchange = async () => {
+      const file = picker.files[0];
+      if (!file) return;
+      try {
+        setCirclePic(a.id, await shrinkImage(await resizeImage(file)));
+        render();
+      } catch (err) {
+        showError(err.message);
+      }
+    };
+    actions.append(picker, el('button', { className: 'secondary', textContent: circlePics[a.id] ? 'Change circle picture' : 'Set circle picture', onclick: () => picker.click() }));
+    if (circlePics[a.id]) {
+      actions.append(el('button', { className: 'secondary', textContent: 'Use logo', onclick: () => { setCirclePic(a.id, null); render(); } }));
+    }
+  }
   if (connected) {
     // Disconnect logs out but keeps the circle, so it's easy to reconnect.
     const disconnect = el('button', { className: 'secondary', textContent: 'Disconnect' });
@@ -421,7 +448,8 @@ function manualActions(a) {
 let guide = null; // { steps, index, bio, avatar, done: Set }
 
 function startGuide(steps, bio, avatar) {
-  guide = { steps, index: 0, bio, avatar, done: new Set() };
+  guide = { steps, index: 0, bio, avatar, done: new Set(), smallAvatar: null };
+  if (avatar) shrinkImage(avatar).then((small) => { if (guide) guide.smallAvatar = small; }).catch(() => {});
   renderGuide();
   $('#guide').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -478,8 +506,16 @@ function renderGuide() {
   tips.push(el('p', { className: 'hint', textContent: `In ${a.label}, edit your profile, paste the bio${guide.avatar ? ' and pick the new picture' : ''}, save, then come back here.` }));
 
   const next = el('button', { textContent: index === steps.length - 1 ? 'Done, finish' : `Done, next: ${steps[index + 1].label} →` });
-  next.onclick = () => { guide.index++; renderGuide(); box.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
-  const skip = el('button', { className: 'link', textContent: 'Skip', onclick: next.onclick });
+  const advance = () => { guide.index++; renderGuide(); box.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+  // "Done" means they set the new picture there, so the circle shows it from now on.
+  next.onclick = () => {
+    if (guide.smallAvatar) {
+      setCirclePic(a.id, guide.smallAvatar);
+      render();
+    }
+    advance();
+  };
+  const skip = el('button', { className: 'link', textContent: 'Skip', onclick: advance });
 
   box.replaceChildren(
     el('div', { className: 'guide-head' }, [
@@ -607,6 +643,21 @@ $('#bio').addEventListener('input', updateBioCount);
 
 // Crop to a centered square and shrink to 800x800 JPEG so it fits every
 // platform's size limit (Bluesky's is 1 MB).
+// Tiny version of a picture for a circle (about 5-10 KB).
+function shrinkImage(dataUrl, size = 160) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = size;
+      canvas.getContext('2d').drawImage(img, 0, 0, size, size);
+      resolve(canvas.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = () => reject(new Error("Couldn't read that image."));
+    img.src = dataUrl;
+  });
+}
+
 function resizeImage(file) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -751,9 +802,10 @@ $('#reset').onclick = async () => {
   for (const [id, s] of Object.entries(status)) {
     if (s.connected) await api(`/api/${id}/disconnect`, { method: 'POST' }).catch(() => {});
   }
-  ['ph_apps', 'ph_manual', 'ph_excluded', 'ph_ios_hint_closed'].forEach((key) => {
+  ['ph_apps', 'ph_manual', 'ph_excluded', 'ph_ios_hint_closed', 'ph_pics'].forEach((key) => {
     try { localStorage.removeItem(key); } catch {}
   });
+  circlePics = {};
   pinned = DEFAULT_APPS;
   excluded = new Set();
   activeId = null;
