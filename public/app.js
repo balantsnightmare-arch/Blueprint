@@ -24,6 +24,25 @@ const PLATFORMS = {
   mastodon: { label: 'Mastodon', kind: 'manual', color: '#6364FF', bioLimit: 500, settingsUrl: 'https://mastodon.social/settings/profile', blurb: `${MANUAL} (opens mastodon.social)` },
 };
 
+// Video posting: caption limits and where to start a new post on each app.
+// Apps missing here (Twitch, Steam, GitHub) don't take video posts.
+const VIDEO = {
+  facebook: { captionLimit: 63206, uploadUrl: 'https://www.facebook.com/reels/create' },
+  youtube: { captionLimit: 5000 },
+  instagram: { captionLimit: 2200, uploadUrl: 'https://www.instagram.com/', desktopTip: 'Click Create (+) in the left menu, then Post.' },
+  tiktok: { captionLimit: 4000, uploadUrl: 'https://www.tiktok.com/tiktokstudio/upload' },
+  linkedin: { captionLimit: 3000, uploadUrl: 'https://www.linkedin.com/feed/?shareActive=true' },
+  snapchat: { uploadUrl: 'https://www.snapchat.com/' },
+  x: { captionLimit: 280, uploadUrl: 'https://x.com/compose/post' },
+  reddit: { uploadUrl: 'https://www.reddit.com/submit' },
+  pinterest: { captionLimit: 500, uploadUrl: 'https://www.pinterest.com/pin-creation-tool/' },
+  threads: { captionLimit: 500, uploadUrl: 'https://www.threads.com/' },
+  discord: { captionLimit: 2000, uploadUrl: 'https://discord.com/channels/@me', tip: 'Open the chat or channel you want, then drop the video in.' },
+  bluesky: { captionLimit: 300 },
+  mastodon: { captionLimit: 500, uploadUrl: 'https://mastodon.social/publish' },
+};
+const BLUESKY_MAX_VIDEO_BYTES = 100 * 1024 * 1024;
+
 const $ = (sel) => document.querySelector(sel);
 const segmenter = new Intl.Segmenter();
 const countChars = (text) => [...segmenter.segment(text)].length;
@@ -148,6 +167,7 @@ function render() {
   renderDetail();
   renderAvatar();
   updateBioCount();
+  renderPost();
   $('#apply').disabled = !accounts().some((a) => a.ready);
   $('#apply').textContent = 'Update profiles';
 }
@@ -445,13 +465,14 @@ function manualActions(a) {
 }
 
 // ---------- step-by-step guide ----------
-// Walks through each manual app one at a time: copy bio, save picture,
-// open the app, then move on to the next.
+// Walks through each manual app one at a time, then moves on to the next.
+// Profile mode: copy bio, save picture, open the app's profile settings.
+// Post mode: copy caption, share/download the video, open the app's upload page.
 
-let guide = null; // { steps, index, bio, avatar, done: Set }
+let guide = null; // { mode, steps, index, done: Set, bio, avatar, smallAvatar, caption, video }
 
-function startGuide(steps, bio, avatar) {
-  guide = { steps, index: 0, bio, avatar, done: new Set(), smallAvatar: null };
+function startGuide(steps, { mode = 'profile', bio, avatar, caption, video } = {}) {
+  guide = { mode, steps, index: 0, bio, avatar, caption, video, done: new Set(), smallAvatar: null };
   if (avatar) shrinkImage(avatar).then((small) => { if (guide) guide.smallAvatar = small; }).catch(() => {});
   renderGuide();
   $('#guide').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -479,10 +500,15 @@ function renderGuide() {
 
   const close = el('button', { className: 'secondary', textContent: 'Close', onclick: () => { guide = null; renderGuide(); } });
 
+  const posting = guide.mode === 'post';
+
   if (index >= steps.length) {
+    const summary = posting
+      ? `You went through ${steps.length} app${steps.length === 1 ? '' : 's'}. Your video should be up everywhere you picked.`
+      : `You went through ${steps.length} app${steps.length === 1 ? '' : 's'}. Your profiles should all match now.`;
     box.replaceChildren(
       el('h2', { textContent: 'All done 🎉' }),
-      el('p', { className: 'muted', textContent: `You went through ${steps.length} app${steps.length === 1 ? '' : 's'}. Your profiles should all match now.` }),
+      el('p', { className: 'muted', textContent: summary }),
       el('div', { className: 'guide-foot' }, [close]),
     );
     return;
@@ -493,27 +519,42 @@ function renderGuide() {
   progress.firstChild.style.width = `${(index / steps.length) * 100}%`;
 
   const tasks = [];
-  let n = 1;
-  if (guide.bio !== undefined) {
-    tasks.push(guideTask(`${a.id}:bio`, n++, 'Copy bio', 'Bio copied', () => copyText(guide.bio)));
-  }
-  if (guide.avatar) {
-    tasks.push(guideTask(`${a.id}:pic`, n++, SAVE_LABEL, isTouch ? 'Picture saved' : 'Picture downloaded', () => savePicture(guide.avatar)));
-  }
-  tasks.push(guideTask(`${a.id}:open`, n++, `Open ${a.label}`, `${a.label} opened`, () => { window.open(a.settingsUrl, '_blank', 'noopener'); }));
-
   const tips = [];
-  if (guide.bio !== undefined && a.bioLimit && countChars(guide.bio) > a.bioLimit) {
-    tips.push(el('p', { className: 'warn', textContent: `Heads up: ${a.label} only allows ${a.bioLimit} characters, so your bio will get cut off there.` }));
+  let n = 1;
+  if (posting) {
+    const v = VIDEO[a.id] ?? {};
+    if (guide.caption) tasks.push(guideTask(`${a.id}:caption`, n++, 'Copy caption', 'Caption copied', () => copyText(guide.caption)));
+    tasks.push(guideTask(`${a.id}:video`, n++, isTouch ? 'Share video' : 'Download video', isTouch ? 'Video shared' : 'Video downloaded', () => shareVideo(guide.video)));
+    tasks.push(guideTask(`${a.id}:open`, n++, `Open ${a.label}`, `${a.label} opened`, () => { window.open(v.uploadUrl ?? a.settingsUrl, '_blank', 'noopener'); }));
+
+    if (guide.caption && v.captionLimit && countChars(guide.caption) > v.captionLimit) {
+      tips.push(el('p', { className: 'warn', textContent: `Heads up: ${a.label} captions can only be ${v.captionLimit} characters, so yours will get cut off there.` }));
+    }
+    if (isTouch) tips.push(el('p', { className: 'tip', textContent: `Share video opens your phone's share menu. Pick ${a.label} there and it opens with your video ready.` }));
+    if (v.tip) tips.push(el('p', { className: 'tip', textContent: v.tip }));
+    if (v.desktopTip && !isTouch) tips.push(el('p', { className: 'tip', textContent: v.desktopTip }));
+    tips.push(el('p', { className: 'hint', textContent: `In ${a.label}, start a new post, choose the video${guide.caption ? ', paste the caption' : ''}, post it, then come back here.` }));
+  } else {
+    if (guide.bio !== undefined) {
+      tasks.push(guideTask(`${a.id}:bio`, n++, 'Copy bio', 'Bio copied', () => copyText(guide.bio)));
+    }
+    if (guide.avatar) {
+      tasks.push(guideTask(`${a.id}:pic`, n++, SAVE_LABEL, isTouch ? 'Picture saved' : 'Picture downloaded', () => savePicture(guide.avatar)));
+    }
+    tasks.push(guideTask(`${a.id}:open`, n++, `Open ${a.label}`, `${a.label} opened`, () => { window.open(a.settingsUrl, '_blank', 'noopener'); }));
+
+    if (guide.bio !== undefined && a.bioLimit && countChars(guide.bio) > a.bioLimit) {
+      tips.push(el('p', { className: 'warn', textContent: `Heads up: ${a.label} only allows ${a.bioLimit} characters, so your bio will get cut off there.` }));
+    }
+    if (a.tip) tips.push(el('p', { className: 'tip', textContent: a.tip }));
+    tips.push(el('p', { className: 'hint', textContent: `In ${a.label}, edit your profile, paste the bio${guide.avatar ? ' and pick the new picture' : ''}, save, then come back here.` }));
   }
-  if (a.tip) tips.push(el('p', { className: 'tip', textContent: a.tip }));
-  tips.push(el('p', { className: 'hint', textContent: `In ${a.label}, edit your profile, paste the bio${guide.avatar ? ' and pick the new picture' : ''}, save, then come back here.` }));
 
   const next = el('button', { textContent: index === steps.length - 1 ? 'Done, finish' : `Done, next: ${steps[index + 1].label} →` });
   const advance = () => { guide.index++; renderGuide(); box.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
   // "Done" means they set the new picture there, so the circle shows it from now on.
   next.onclick = () => {
-    if (guide.smallAvatar) {
+    if (!posting && guide.smallAvatar) {
       setCirclePic(a.id, guide.smallAvatar);
       render();
     }
@@ -698,6 +739,7 @@ $('#avatar-undo').onclick = () => {
 // ---------- choose which apps to update ----------
 
 const chooser = $('#choose-dialog');
+let chooserMode = 'profile'; // 'profile' or 'post'
 
 function chosenIds() {
   return [...chooser.querySelectorAll('.choose-list input:checked')].map((i) => i.value);
@@ -707,23 +749,36 @@ function updateChooserButton() {
   const n = chosenIds().length;
   const btn = chooser.querySelector('[data-confirm]');
   btn.disabled = n === 0;
-  btn.textContent = n ? `Update ${n} app${n === 1 ? '' : 's'}` : 'Pick at least one app';
+  const verb = chooserMode === 'post' ? 'Post to' : 'Update';
+  btn.textContent = n ? `${verb} ${n} app${n === 1 ? '' : 's'}` : 'Pick at least one app';
   const all = chooser.querySelector('[data-toggle-all]');
-  all.textContent = n === accounts().filter((a) => a.ready).length ? 'Select none' : 'Select all';
+  all.textContent = n === chooser.querySelectorAll('.choose-list input:not(:disabled)').length ? 'Select none' : 'Select all';
 }
 
-function openChooser() {
+// Why an app can't take this video, or null if it can.
+function videoProblem(a) {
+  if (a.id === 'bluesky' && videoFile?.size > BLUESKY_MAX_VIDEO_BYTES) return 'Video is over 100 MB';
+  const limit = VIDEO[a.id]?.captionLimit;
+  if (limit && countChars($('#video-caption').value) > limit) return `Caption too long (max ${limit})`;
+  return null;
+}
+
+function openChooser(mode = 'profile') {
+  chooserMode = mode;
+  const posting = mode === 'post';
   const bio = $('#bio').value;
   const updateBio = $('#update-bio').checked;
   const list = chooser.querySelector('.choose-list');
   list.replaceChildren();
-  for (const a of accounts()) {
+  const candidates = posting ? accounts().filter((a) => VIDEO[a.id]) : accounts();
+  for (const a of candidates) {
     const box = el('input', { type: 'checkbox', value: a.id, checked: a.included, disabled: !a.ready });
     box.onchange = updateChooserButton;
-    const over = a.ready && updateBio && a.bioLimit && countChars(bio) > a.bioLimit;
+    const problem = !a.ready ? null : posting ? videoProblem(a) : updateBio && a.bioLimit && countChars(bio) > a.bioLimit ? `Bio too long (max ${a.bioLimit})` : null;
+    const over = Boolean(problem);
     const note = !a.ready
       ? 'Not connected yet. Tap its circle to connect'
-      : over ? `Bio too long (max ${a.bioLimit})` : a.kind === 'auto' ? 'Updates automatically' : 'Guided copy & paste';
+      : problem ?? (a.kind === 'auto' ? (posting ? 'Uploads automatically' : 'Updates automatically') : posting ? 'Guided share' : 'Guided copy & paste');
     list.append(
       el('label', { className: 'choose-item' }, [
         box,
@@ -755,6 +810,13 @@ chooser.addEventListener('click', (e) => e.target === chooser && chooser.close()
 chooser.querySelector('[data-confirm]').onclick = () => {
   const ids = new Set(chosenIds());
   const targets = accounts().filter((a) => ids.has(a.id));
+  if (chooserMode === 'post') {
+    // Auto apps would reject it, so stop here; manual apps just get a warning in the guide.
+    const blocked = targets.filter((a) => a.kind === 'auto' && videoProblem(a));
+    chooser.close();
+    if (blocked.length) return showError(blocked.map((a) => `${a.label}: ${videoProblem(a)}.`).join(' ') + ' Fix it or untick those apps.');
+    return runPost(targets);
+  }
   const updateBio = $('#update-bio').checked;
   const bio = $('#bio').value;
   // Only block on apps we update ourselves; manual ones just get a warning in the guide.
@@ -789,11 +851,171 @@ async function runUpdate(targets, updateBio, bio) {
       await refresh(); // show the updated pictures in the circles
     }
     const manual = targets.filter((a) => a.kind === 'manual');
-    if (manual.length) startGuide(manual, updateBio ? bio : undefined, avatar);
+    if (manual.length) startGuide(manual, { mode: 'profile', bio: updateBio ? bio : undefined, avatar });
   } catch (err) {
     showError(err.message);
   } finally {
     render();
+  }
+}
+
+// ---------- tabs ----------
+
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach((t) => {
+    const on = t.dataset.tab === name;
+    t.classList.toggle('active', on);
+    t.setAttribute('aria-selected', String(on));
+  });
+  $('#tab-profile').hidden = name !== 'profile';
+  $('#tab-post').hidden = name !== 'post';
+  store.set('ph_tab', name);
+}
+document.querySelectorAll('.tab').forEach((t) => (t.onclick = () => showTab(t.dataset.tab)));
+showTab(store.get('ph_tab', 'profile'));
+
+// ---------- post a video ----------
+
+let videoFile = null;
+let videoMeta = null; // { width, height, duration }
+let videoUrl = null;
+
+const formatSize = (bytes) => (bytes >= 1024 ** 3 ? `${(bytes / 1024 ** 3).toFixed(1)} GB` : `${Math.max(0.1, bytes / 1024 ** 2).toFixed(1)} MB`);
+const formatTime = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+
+const postTargets = () => included().filter((a) => VIDEO[a.id]);
+
+function renderPost() {
+  $('#post-video').disabled = !videoFile || !accounts().some((a) => a.ready && VIDEO[a.id]);
+  const n = countChars($('#video-caption').value);
+  const limits = postTargets().filter((a) => VIDEO[a.id].captionLimit);
+  $('#caption-count').textContent = limits.length
+    ? limits.map((a) => {
+        const max = VIDEO[a.id].captionLimit;
+        return `${a.label} ${n}/${max}${n > max ? ' (too long)' : ''}`;
+      }).join(' · ')
+    : `${n} characters`;
+}
+
+function setVideo(file) {
+  if (videoUrl) URL.revokeObjectURL(videoUrl);
+  videoFile = file;
+  videoMeta = null;
+  videoUrl = file ? URL.createObjectURL(file) : null;
+  const preview = $('#video-preview');
+  preview.hidden = !file;
+  $('#video-empty').hidden = Boolean(file);
+  if (file) preview.src = videoUrl;
+  else preview.removeAttribute('src');
+  $('#video-info').textContent = file ? `${file.name} · ${formatSize(file.size)}` : '';
+  renderPost();
+}
+
+$('#video-preview').addEventListener('loadedmetadata', (e) => {
+  const v = e.target;
+  videoMeta = { width: v.videoWidth, height: v.videoHeight, duration: v.duration };
+  const shape = v.videoHeight > v.videoWidth ? 'vertical' : v.videoHeight < v.videoWidth ? 'horizontal' : 'square';
+  if (videoFile) $('#video-info').textContent = `${videoFile.name} · ${formatSize(videoFile.size)} · ${formatTime(v.duration)} · ${shape}`;
+});
+
+$('#video-input').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (file && !file.type.startsWith('video/') && file.type !== '') return showError('Please choose a video file.');
+  showError('');
+  setVideo(file ?? null);
+  e.target.value = '';
+});
+
+$('#video-caption').addEventListener('input', renderPost);
+
+$('#post-video').addEventListener('click', () => {
+  if (!videoFile) return showError('Choose a video first.');
+  showError('');
+  openChooser('post');
+});
+
+// Phones get the share sheet, so the video can go straight into TikTok,
+// Instagram and so on; computers get a normal download.
+async function shareVideo(file) {
+  if (isTouch && navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file] });
+      return true;
+    } catch (err) {
+      if (err.name === 'AbortError') return false; // they closed the share sheet
+    }
+  }
+  const url = URL.createObjectURL(file);
+  const link = el('a', { href: url, download: file.name || 'video.mp4' });
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return true;
+}
+
+// Raw upload with progress (fetch can't report upload progress).
+function uploadVideo(file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/upload/video');
+    xhr.setRequestHeader('Content-Type', file.type || 'video/mp4');
+    xhr.setRequestHeader('X-File-Name', encodeURIComponent(file.name));
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
+    xhr.onload = () => {
+      let data = {};
+      try { data = JSON.parse(xhr.responseText); } catch {}
+      if (xhr.status < 300) resolve(data);
+      else reject(new Error(data.error || `Upload failed (${xhr.status}).`));
+    };
+    xhr.onerror = () => reject(new Error('Upload failed. Check your connection and try again.'));
+    xhr.send(file);
+  });
+}
+
+function setPostProgress(fraction, text) {
+  const box = $('#post-progress');
+  box.hidden = fraction === null;
+  if (fraction === null) return;
+  box.querySelector('.progress span').style.width = `${Math.round(fraction * 100)}%`;
+  box.querySelector('p').textContent = text;
+}
+
+async function runPost(targets) {
+  const file = videoFile;
+  const title = $('#video-title').value.trim();
+  const caption = $('#video-caption').value;
+  const privacy = $('#yt-privacy').value;
+  const button = $('#post-video');
+  const list = $('#post-results');
+  list.replaceChildren();
+  button.disabled = true;
+  button.textContent = 'Posting…';
+  try {
+    const auto = targets.filter((a) => a.kind === 'auto');
+    if (auto.length) {
+      setPostProgress(0, 'Uploading your video…');
+      const { id } = await uploadVideo(file, (p) => setPostProgress(p * 0.9, `Uploading your video… ${Math.round(p * 100)}%`));
+      setPostProgress(0.95, `Posting to ${auto.map((a) => a.label).join(' and ')}… big videos can take a minute.`);
+      const results = await api('/api/post-video', {
+        method: 'POST',
+        body: { uploadId: id, targets: auto.map((a) => a.id), title, caption, privacy, aspectRatio: videoMeta },
+      });
+      for (const a of auto) {
+        const r = results[a.id] ?? { ok: false, message: 'No response.' };
+        const parts = [el('span', { textContent: `${a.label}: ${r.message}` })];
+        if (r.url) parts.push(el('a', { className: 'button secondary', href: r.url, target: '_blank', rel: 'noopener', textContent: 'View post' }));
+        list.append(el('li', { className: r.ok ? 'ok' : 'bad' }, parts));
+      }
+    }
+    const manual = targets.filter((a) => a.kind === 'manual');
+    if (manual.length) startGuide(manual, { mode: 'post', caption, video: file });
+  } catch (err) {
+    showError(err.message);
+  } finally {
+    setPostProgress(null);
+    button.textContent = 'Post video';
+    renderPost();
   }
 }
 
@@ -819,6 +1041,12 @@ $('#reset').onclick = async () => {
   $('#bio').value = '';
   $('#update-bio').checked = true;
   $('#results').replaceChildren();
+  setVideo(null);
+  $('#video-title').value = '';
+  $('#video-caption').value = '';
+  $('#yt-privacy').value = 'private';
+  $('#post-results').replaceChildren();
+  showTab('profile');
   showError('');
   renderGuide();
   await refresh();

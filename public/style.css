@@ -395,3 +395,45 @@ main { padding-top: max(40px, env(safe-area-inset-top)); padding-bottom: max(64p
   background: rgb(167 139 250 / 0.1); border: 1px solid rgb(167 139 250 / 0.3); color: var(--text);
 }
 .tip::before { content: "💡 "; }
+
+/* ---------- tabs ---------- */
+
+.tabs {
+  display: flex; gap: 4px; padding: 4px; margin: 0 auto 16px; width: fit-content; max-width: 100%;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+}
+.tab { background: transparent; color: var(--muted); border: none; padding: 8px 18px; border-radius: 9px; }
+.tab:not(:disabled):hover { color: var(--text); box-shadow: none; }
+.tab.active { background: var(--gradient); color: #fff; }
+
+/* ---------- post a video ---------- */
+
+.video-drop {
+  position: relative; width: 200px; aspect-ratio: 9 / 16; max-height: 360px; margin: 0 auto;
+  border-radius: 16px; overflow: hidden; cursor: pointer; flex: none;
+  background: var(--field); border: 2px dashed rgb(177 151 252 / 0.35);
+  display: grid; place-items: center; transition: box-shadow 0.2s, border-color 0.2s;
+}
+.video-drop:hover { border-color: var(--accent); box-shadow: 0 0 28px rgb(168 85 247 / 0.35); }
+.video-drop:has(video:not([hidden])) { border-style: solid; background: #000; }
+.video-drop video { width: 100%; height: 100%; object-fit: contain; }
+.video-empty { display: grid; justify-items: center; gap: 6px; color: var(--muted); font-size: 14px; text-align: center; }
+.video-icon { font-size: 34px; }
+
+select {
+  width: 100%; padding: 10px 12px; border-radius: 10px; font: inherit;
+  border: 1px solid var(--border); background: var(--field); color: var(--text);
+}
+select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgb(177 151 252 / 0.2); }
+
+.post-progress { margin-top: 14px; display: flex; flex-direction: column; gap: 6px; }
+.post-progress .progress { height: 8px; }
+.post-progress p { margin: 0; }
+
+.results li a.button { padding: 4px 12px; font-size: 13px; }
+
+@media (max-width: 560px) {
+  .tabs { width: 100%; }
+  .tab { flex: 1; padding: 10px 8px; }
+  .video-drop { width: 160px; }
+}

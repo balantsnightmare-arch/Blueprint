@@ -18,7 +18,7 @@
   <main>
     <header>
       <h1>null</h1>
-      <p class="muted">Change your profile once, update it everywhere.</p>
+      <p class="muted">Change your profile and post videos once, everywhere.</p>
       <button id="install" class="secondary small" hidden>Install app</button>
     </header>
 
@@ -40,6 +40,12 @@
       <div id="account-detail" class="account-detail" hidden></div>
     </section>
 
+    <nav class="tabs" role="tablist">
+      <button class="tab active" role="tab" data-tab="profile" aria-selected="true">Edit profile</button>
+      <button class="tab" role="tab" data-tab="post" aria-selected="false">Post a video</button>
+    </nav>
+
+    <div id="tab-profile">
     <section class="editor">
       <div class="avatar-picker">
         <label class="avatar-circle" title="Choose a new picture">
@@ -66,6 +72,43 @@
       <button id="apply" disabled>Update profiles</button>
     </div>
     <ul id="results" class="results"></ul>
+    </div>
+
+    <div id="tab-post" hidden>
+      <section class="editor">
+        <label class="video-drop" title="Choose a video">
+          <input id="video-input" type="file" accept="video/*" hidden />
+          <span id="video-empty" class="video-empty"><span class="video-icon">🎬</span>Choose a video</span>
+          <video id="video-preview" playsinline muted controls hidden></video>
+        </label>
+
+        <div class="bio-box">
+          <span id="video-info" class="hint"></span>
+          <label for="video-title" class="label">Title <span class="hint">(used by YouTube)</span></label>
+          <input id="video-title" maxlength="100" placeholder="Give your video a title" />
+          <label for="video-caption" class="label">Caption</label>
+          <textarea id="video-caption" rows="5" placeholder="Write one caption for every app… #hashtags welcome"></textarea>
+          <span id="caption-count" class="hint"></span>
+          <label for="yt-privacy" class="label">YouTube visibility</label>
+          <select id="yt-privacy">
+            <option value="private">Private</option>
+            <option value="unlisted">Unlisted</option>
+            <option value="public">Public</option>
+          </select>
+          <p class="hint">Until Google approves this app, YouTube may keep new uploads private.</p>
+        </div>
+      </section>
+
+      <div class="apply-row">
+        <button id="post-video" disabled>Post video</button>
+      </div>
+      <div id="post-progress" class="post-progress" hidden>
+        <div class="progress"><span></span></div>
+        <p class="hint"></p>
+      </div>
+      <ul id="post-results" class="results"></ul>
+    </div>
+
     <section id="guide" class="guide" hidden></section>
 
     <footer class="page-foot">

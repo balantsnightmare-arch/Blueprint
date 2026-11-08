@@ -1,5 +1,9 @@
 import 'dotenv/config';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import express from 'express';
 import { AtpAgent } from '@atproto/api';
 import { google } from 'googleapis';
@@ -17,7 +21,13 @@ const BASE_URL = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || `
 const SESSION_COOKIE = 'ph_sid';
 const SESSION_IDLE_MS = 2 * 60 * 60 * 1000; // 2 hours
 const MAX_SESSIONS = 1000;
-const sessions = new Map(); // sid -> { bluesky, youtube, lastSeen }
+const sessions = new Map(); // sid -> { bluesky, youtube, upload, lastSeen }
+
+// A session holds at most one uploaded video, as a temp file on disk.
+function dropUpload(session) {
+  if (session?.upload) fs.rm(session.upload.file, { force: true }, () => {});
+  if (session) session.upload = null;
+}
 
 function readCookie(req, name) {
   for (const part of (req.headers.cookie ?? '').split(';')) {
@@ -40,10 +50,11 @@ function sessionMiddleware(req, res, next) {
     if (sessions.size >= MAX_SESSIONS) {
       // Evict the least recently used session to keep memory bounded.
       const oldest = [...sessions.entries()].sort((a, b) => a[1].lastSeen - b[1].lastSeen)[0];
+      dropUpload(oldest[1]);
       sessions.delete(oldest[0]);
     }
     sid = crypto.randomBytes(32).toString('base64url');
-    session = { bluesky: null, youtube: null, lastSeen: Date.now() };
+    session = { bluesky: null, youtube: null, upload: null, lastSeen: Date.now() };
     sessions.set(sid, session);
     setCookie(req, res, SESSION_COOKIE, sid, { maxAge: SESSION_IDLE_MS / 1000 });
   }
@@ -54,7 +65,15 @@ function sessionMiddleware(req, res, next) {
 
 setInterval(() => {
   const cutoff = Date.now() - SESSION_IDLE_MS;
-  for (const [sid, s] of sessions) if (s.lastSeen < cutoff) sessions.delete(sid);
+  const uploadCutoff = Date.now() - UPLOAD_TTL_MS;
+  for (const [sid, s] of sessions) {
+    if (s.lastSeen < cutoff) {
+      dropUpload(s);
+      sessions.delete(sid);
+    } else if (s.upload && s.upload.at < uploadCutoff) {
+      dropUpload(s);
+    }
+  }
 }, 10 * 60 * 1000).unref();
 
 // Cross-site pages can't send a JSON POST without a CORS preflight, which we
@@ -267,6 +286,102 @@ app.post('/api/apply', async (req, res) => {
       }
     }),
   );
+  res.json(results);
+});
+
+// ---------- post a video ----------
+// Step 1: the browser sends the video once to /upload/video and it's saved as a
+// temp file. Step 2: /api/post-video uploads that file to each chosen app.
+
+const MAX_VIDEO_BYTES = 1024 * 1024 * 1024; // 1 GB
+const UPLOAD_TTL_MS = 60 * 60 * 1000; // temp videos are deleted after an hour
+const BLUESKY_MAX_VIDEO_BYTES = 100 * 1024 * 1024;
+
+// Not under /api, because the body is the raw video rather than JSON. Requiring
+// a video/* content type still blocks forged cross-site posts: browsers can't
+// send that type from another site without a CORS preflight, which we never allow.
+app.post('/upload/video', async (req, res) => {
+  const type = String(req.headers['content-type'] ?? '');
+  if (!/^video\/[\w.+-]+$/.test(type)) return res.status(415).json({ error: 'Please choose a video file.' });
+  if (Number(req.headers['content-length']) > MAX_VIDEO_BYTES) {
+    return res.status(413).json({ error: 'That video is too big. The limit is 1 GB.' });
+  }
+
+  const file = path.join(os.tmpdir(), `null-video-${crypto.randomBytes(16).toString('hex')}`);
+  let size = 0;
+  req.on('data', (chunk) => {
+    size += chunk.length;
+    if (size > MAX_VIDEO_BYTES) req.destroy(new Error('too big'));
+  });
+  try {
+    await pipeline(req, fs.createWriteStream(file));
+  } catch (err) {
+    fs.rm(file, { force: true }, () => {});
+    const tooBig = size > MAX_VIDEO_BYTES;
+    return res.status(tooBig ? 413 : 400).json({ error: tooBig ? 'That video is too big. The limit is 1 GB.' : `Upload failed: ${err.message}` });
+  }
+
+  dropUpload(req.session);
+  const name = decodeURIComponent(String(req.headers['x-file-name'] ?? 'video')).slice(0, 200);
+  req.session.upload = { id: crypto.randomBytes(16).toString('hex'), file, type, size, name, at: Date.now() };
+  res.json({ ok: true, id: req.session.upload.id, size });
+});
+
+async function postYoutubeVideo({ auth }, video, { title, caption, privacy }) {
+  const yt = google.youtube({ version: 'v3', auth });
+  const { data } = await yt.videos.insert({
+    part: ['snippet', 'status'],
+    requestBody: {
+      snippet: { title: (title || video.name || 'New video').slice(0, 100), description: caption ?? '' },
+      status: { privacyStatus: ['private', 'unlisted', 'public'].includes(privacy) ? privacy : 'private', selfDeclaredMadeForKids: false },
+    },
+    media: { mimeType: video.type, body: fs.createReadStream(video.file) },
+  });
+  const note = privacy !== 'private' ? " If it shows as private, that's Google's rule for apps that haven't been verified yet." : '';
+  return { message: `Uploaded.${note}`, url: `https://youtu.be/${data.id}` };
+}
+
+async function postBlueskyVideo({ agent }, video, { caption, aspectRatio }) {
+  if (video.size > BLUESKY_MAX_VIDEO_BYTES) throw new Error('Bluesky videos must be under 100 MB.');
+  const bytes = await fs.promises.readFile(video.file);
+  const { data } = await agent.uploadBlob(bytes, { encoding: video.type });
+  const ratio = aspectRatio?.width > 0 && aspectRatio?.height > 0
+    ? { width: Math.round(aspectRatio.width), height: Math.round(aspectRatio.height) }
+    : undefined;
+  const { uri } = await agent.post({
+    text: caption ?? '',
+    embed: { $type: 'app.bsky.embed.video', video: data.blob, ...(ratio && { aspectRatio: ratio }) },
+    createdAt: new Date().toISOString(),
+  });
+  const postId = uri.split('/').pop();
+  return { message: 'Posted.', url: `https://bsky.app/profile/${agent.session.handle}/post/${postId}` };
+}
+
+const videoPosters = { youtube: postYoutubeVideo, bluesky: postBlueskyVideo };
+
+app.post('/api/post-video', async (req, res) => {
+  const { uploadId, targets = [], title, caption, privacy, aspectRatio } = req.body ?? {};
+  const video = req.session.upload;
+  if (!video || video.id !== uploadId) return res.status(400).json({ error: 'The video upload expired. Please post again.' });
+  const results = {};
+  // One at a time, so a big video isn't read into memory twice at once.
+  for (const target of targets) {
+    if (!Object.hasOwn(videoPosters, target)) {
+      results[target] = { ok: false, message: 'Unknown platform.' };
+      continue;
+    }
+    const connection = req.session[target];
+    if (!connection) {
+      results[target] = { ok: false, message: 'Not connected.' };
+      continue;
+    }
+    try {
+      results[target] = { ok: true, ...(await videoPosters[target](connection, video, { title, caption, privacy, aspectRatio })) };
+    } catch (err) {
+      const quota = /quota/i.test(err.message);
+      results[target] = { ok: false, message: quota ? "YouTube's daily upload limit for this app was reached. Try again tomorrow." : err.message };
+    }
+  }
   res.json(results);
 });
 
