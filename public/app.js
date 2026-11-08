@@ -14,7 +14,9 @@ const PLATFORMS = {
   reddit: { label: 'Reddit', kind: 'manual', color: '#FF4500', bioLimit: 200, settingsUrl: 'https://www.reddit.com/settings/profile', blurb: MANUAL },
   pinterest: { label: 'Pinterest', kind: 'manual', color: '#BD081C', bioLimit: 500, settingsUrl: 'https://www.pinterest.com/settings/', blurb: MANUAL },
   threads: { label: 'Threads', kind: 'manual', color: '#000000', bioLimit: 150, settingsUrl: 'https://www.threads.com/', blurb: MANUAL },
-  discord: { label: 'Discord', kind: 'manual', color: '#5865F2', bioLimit: 190, settingsUrl: 'https://discord.com/feature/editProfile', blurb: MANUAL },
+  discord: { label: 'Discord', kind: 'manual', color: '#5865F2', bioLimit: 190, settingsUrl: 'https://discord.com/feature/editProfile', blurb: MANUAL,
+    // Newer Discord settings open the profile editor as a popup that no link can reach.
+    tip: 'Discord opens your settings. If you don\'t see your profile yet, click "Edit Profiles" under your name at the top left.' },
   twitch: { label: 'Twitch', kind: 'manual', color: '#9146FF', bioLimit: 300, settingsUrl: 'https://www.twitch.tv/settings/profile', blurb: MANUAL },
   steam: { label: 'Steam', kind: 'manual', color: '#000000', settingsUrl: 'https://steamcommunity.com/my/edit/info', blurb: MANUAL },
   github: { label: 'GitHub', kind: 'manual', color: '#181717', bioLimit: 160, settingsUrl: 'https://github.com/settings/profile', blurb: MANUAL },
@@ -358,7 +360,8 @@ function renderDetail() {
   }
   actions.append(remove);
 
-  box.replaceChildren(title, el('p', { className: 'hint', textContent: a.blurb }), el('label', { className: 'check' }, [toggle, ' Include when updating']), actions);
+  const tip = a.tip ? [el('p', { className: 'tip', textContent: a.tip })] : [];
+  box.replaceChildren(title, el('p', { className: 'hint', textContent: a.blurb }), ...tip, el('label', { className: 'check' }, [toggle, ' Include when updating']), actions);
 }
 
 function connectAuto(id) {
@@ -503,6 +506,7 @@ function renderGuide() {
   if (guide.bio !== undefined && a.bioLimit && countChars(guide.bio) > a.bioLimit) {
     tips.push(el('p', { className: 'warn', textContent: `Heads up: ${a.label} only allows ${a.bioLimit} characters, so your bio will get cut off there.` }));
   }
+  if (a.tip) tips.push(el('p', { className: 'tip', textContent: a.tip }));
   tips.push(el('p', { className: 'hint', textContent: `In ${a.label}, edit your profile, paste the bio${guide.avatar ? ' and pick the new picture' : ''}, save, then come back here.` }));
 
   const next = el('button', { textContent: index === steps.length - 1 ? 'Done, finish' : `Done, next: ${steps[index + 1].label} →` });

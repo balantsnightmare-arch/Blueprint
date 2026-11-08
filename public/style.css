@@ -388,3 +388,10 @@ main { padding-top: max(40px, env(safe-area-inset-top)); padding-bottom: max(64p
 @media (max-width: 560px) {
   .account-row.editing { gap: 10px; }
 }
+
+/* A where-to-click tip for apps whose links can't open the exact page. */
+.tip {
+  margin: 0; padding: 8px 12px; font-size: 13px; border-radius: 10px;
+  background: rgb(167 139 250 / 0.1); border: 1px solid rgb(167 139 250 / 0.3); color: var(--text);
+}
+.tip::before { content: "💡 "; }
