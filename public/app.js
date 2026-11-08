@@ -14,7 +14,7 @@ const PLATFORMS = {
   reddit: { label: 'Reddit', kind: 'manual', color: '#FF4500', bioLimit: 200, settingsUrl: 'https://www.reddit.com/settings/profile', blurb: MANUAL },
   pinterest: { label: 'Pinterest', kind: 'manual', color: '#BD081C', bioLimit: 500, settingsUrl: 'https://www.pinterest.com/settings/', blurb: MANUAL },
   threads: { label: 'Threads', kind: 'manual', color: '#000000', bioLimit: 150, settingsUrl: 'https://www.threads.com/', blurb: MANUAL },
-  discord: { label: 'Discord', kind: 'manual', color: '#5865F2', bioLimit: 190, settingsUrl: 'https://discord.com/app', blurb: MANUAL },
+  discord: { label: 'Discord', kind: 'manual', color: '#5865F2', bioLimit: 190, settingsUrl: 'https://discord.com/settings/profile-customization', blurb: MANUAL },
   twitch: { label: 'Twitch', kind: 'manual', color: '#9146FF', bioLimit: 300, settingsUrl: 'https://www.twitch.tv/settings/profile', blurb: MANUAL },
   steam: { label: 'Steam', kind: 'manual', color: '#000000', settingsUrl: 'https://steamcommunity.com/my/edit/info', blurb: MANUAL },
   github: { label: 'GitHub', kind: 'manual', color: '#181717', bioLimit: 160, settingsUrl: 'https://github.com/settings/profile', blurb: MANUAL },
