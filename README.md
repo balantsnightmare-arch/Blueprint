@@ -1,4 +1,4 @@
-# Profile Hub
+# null (working name)
 
 Change your profile picture and bio once, and update them on every linked platform.
 
@@ -24,7 +24,7 @@ Open http://localhost:3000.
 ## Connect Bluesky
 
 1. In Bluesky go to **Settings → Privacy and security → App passwords** and create one.
-2. Enter your handle and that app password in Profile Hub. Don't use your real password.
+2. Enter your handle and that app password in the app. Don't use your real password.
 
 ## Connect YouTube
 

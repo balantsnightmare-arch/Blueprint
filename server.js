@@ -271,5 +271,5 @@ app.post('/api/apply', async (req, res) => {
 });
 
 app.listen(PORT, HOST, () => {
-  console.log(`Profile Hub running at ${BASE_URL} (listening on ${HOST}:${PORT})`);
+  console.log(`null running at ${BASE_URL} (listening on ${HOST}:${PORT})`);
 });

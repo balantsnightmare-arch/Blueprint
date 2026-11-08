@@ -218,7 +218,7 @@ function moveApp(id, toIndex) {
 
 async function removeApp(a) {
   const connected = a.kind === 'auto' && a.ready;
-  if (connected && !confirm(`Remove ${a.label}? This also disconnects your ${a.label} account from Profile Hub.`)) return;
+  if (connected && !confirm(`Remove ${a.label}? This also disconnects your ${a.label} account from this app.`)) return;
   if (connected) await api(`/api/${a.id}/disconnect`, { method: 'POST' });
   pinned = pinned.filter((id) => id !== a.id);
   savePinned();
@@ -551,7 +551,7 @@ function renderPlatformList() {
     const tag = el('span', {
       className: `kind ${p.kind}`,
       textContent: p.kind === 'auto' ? 'Auto' : 'Manual',
-      title: p.kind === 'auto' ? 'Profile Hub updates it for you' : "This app blocks profile edits, so you'll paste it in yourself",
+      title: p.kind === 'auto' ? 'Updates automatically for you' : "This app blocks profile edits, so you'll paste it in yourself",
     });
     const btn = el('button', { className: 'platform', disabled: unavailable }, [
       brandDot(id, 'dot'),
@@ -798,11 +798,11 @@ async function runUpdate(targets, updateBio, bio) {
 }
 
 // ---------- reset ----------
-// Puts Profile Hub back to how a brand-new visitor sees it: logs out of
+// Puts the app back to how a brand-new visitor sees it: logs out of
 // connected apps, forgets saved choices, and clears the editor.
 
 $('#reset').onclick = async () => {
-  if (!confirm('Reset Profile Hub? This disconnects your accounts, brings back the default apps, and clears your bio and picture. Your real profiles on each app are not changed.')) return;
+  if (!confirm('Reset everything? This disconnects your accounts, brings back the default apps, and clears your bio and picture. Your real profiles on each app are not changed.')) return;
   for (const [id, s] of Object.entries(status)) {
     if (s.connected) await api(`/api/${id}/disconnect`, { method: 'POST' }).catch(() => {});
   }
