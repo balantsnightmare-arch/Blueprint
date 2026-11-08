@@ -97,9 +97,13 @@ function brandDot(id, className) {
 
 // ---------- accounts ----------
 
+// Circles follow the saved order; anything connected but not in the list goes last.
 function accounts() {
   const list = [];
-  for (const [id, p] of Object.entries(PLATFORMS)) {
+  const order = [...pinned, ...Object.keys(PLATFORMS).filter((id) => !pinned.includes(id))];
+  for (const id of order) {
+    const p = PLATFORMS[id];
+    if (!p) continue;
     const connected = p.kind === 'auto' && Boolean(status[id]?.connected);
     if (!connected && !pinned.includes(id)) continue;
     // An auto app that's pinned but not connected yet shows as a faded circle you can tap to connect.
@@ -115,6 +119,8 @@ const included = () => accounts().filter((a) => a.included);
 
 async function refresh() {
   status = await api('/api/status');
+  // Keep connected apps in the saved list so they can be reordered like the rest.
+  for (const [id, s] of Object.entries(status)) if (s.connected) pin(id);
   const anyConnected = Object.values(status).some((s) => s.connected);
   profiles = anyConnected ? await api('/api/profiles') : {};
 
@@ -140,25 +146,132 @@ function renderCircles() {
   row.querySelectorAll('.circle:not(.add)').forEach((c) => c.remove());
   const list = accounts();
 
+  row.classList.toggle('editing', editing);
   for (const a of list) {
     const circle = el('button', {
       className: `circle${a.ready ? (a.included ? '' : ' excluded') : ' pending'}${a.id === activeId ? ' active' : ''}`,
       title: a.ready ? `${a.label}: ${a.name}` : `${a.label}: tap to connect`,
       onclick: () => {
+        if (justDragged) return;
         activeId = activeId === a.id ? null : a.id;
         render();
       },
     });
+    circle.dataset.id = a.id;
     circle.style.background = a.color;
     circle.style.color = a.fg ?? '#fff';
     if (a.avatar) circle.append(el('img', { src: a.avatar, alt: '' }), brandDot(a.id, 'badge'));
     else circle.append(logo(a.id));
+    if (editing) {
+      const x = el('span', { className: 'remove-x', role: 'button', ariaLabel: `Remove ${a.label}`, textContent: '×' });
+      x.onclick = (e) => {
+        e.stopPropagation();
+        removeApp(a);
+      };
+      circle.append(x);
+    }
+    circle.addEventListener('pointerdown', (e) => startDrag(e, circle));
     row.insertBefore(circle, $('#add-account'));
   }
 
-  $('#account-hint').textContent = list.length
-    ? 'Tap a circle to manage it. Faded ones start unticked when you update.'
-    : 'Tap + to link your first account.';
+  $('#edit-apps').hidden = list.length === 0;
+  $('#edit-apps').textContent = editing ? 'Done' : 'Edit';
+  $('#account-hint').textContent = !list.length
+    ? 'Tap + to link your first account.'
+    : editing
+      ? 'Drag circles to reorder them. Tap × to remove one.'
+      : 'Tap a circle to manage it. Drag to reorder.';
+}
+
+// ---------- reorder and remove ----------
+
+let editing = false;
+let justDragged = false; // stops the click that follows a drag from opening the panel
+
+$('#edit-apps').onclick = () => {
+  editing = !editing;
+  activeId = null;
+  render();
+};
+
+function moveApp(id, toIndex) {
+  const order = accounts().map((a) => a.id);
+  const from = order.indexOf(id);
+  if (from === -1 || toIndex === from) return;
+  order.splice(from, 1);
+  order.splice(Math.max(0, Math.min(toIndex, order.length)), 0, id);
+  pinned = order;
+  savePinned();
+  render();
+}
+
+async function removeApp(a) {
+  const connected = a.kind === 'auto' && a.ready;
+  if (connected && !confirm(`Remove ${a.label}? This also disconnects your ${a.label} account from Profile Hub.`)) return;
+  if (connected) await api(`/api/${a.id}/disconnect`, { method: 'POST' });
+  pinned = pinned.filter((id) => id !== a.id);
+  savePinned();
+  if (activeId === a.id) activeId = null;
+  await refresh();
+}
+
+// Drag with mouse or finger. A drag only starts after moving a few pixels,
+// so a normal tap still opens the circle's panel.
+function startDrag(e, circle) {
+  if (e.button !== 0 || e.target.closest('.remove-x')) return;
+  const row = $('#account-row');
+  const startX = e.clientX;
+  const startY = e.clientY;
+  let dragging = false;
+  let target = null;
+
+  const others = () => [...row.querySelectorAll('.circle:not(.add)')].filter((c) => c !== circle);
+  // Capture right away so fast moves that leave the circle still reach us.
+  circle.setPointerCapture(e.pointerId);
+
+  const onMove = (ev) => {
+    const dx = ev.clientX - startX;
+    const dy = ev.clientY - startY;
+    if (!dragging) {
+      if (Math.hypot(dx, dy) < 8) return;
+      dragging = true;
+      circle.classList.add('dragging');
+    }
+    circle.style.transform = `translate(${dx}px, ${dy}px) scale(1.08)`;
+
+    // Find the circle nearest the pointer and drop before or after it.
+    let best = null;
+    for (const c of others()) {
+      const r = c.getBoundingClientRect();
+      const d = Math.hypot(ev.clientX - (r.left + r.width / 2), ev.clientY - (r.top + r.height / 2));
+      if (!best || d < best.d) best = { c, d, after: ev.clientX > r.left + r.width / 2 };
+    }
+    others().forEach((c) => c.classList.remove('drop-before', 'drop-after'));
+    target = best;
+    if (best) best.c.classList.add(best.after ? 'drop-after' : 'drop-before');
+  };
+
+  const onUp = () => {
+    circle.removeEventListener('pointermove', onMove);
+    circle.removeEventListener('pointerup', onUp);
+    circle.removeEventListener('pointercancel', onUp);
+    if (!dragging) return;
+    justDragged = true;
+    setTimeout(() => (justDragged = false), 0);
+    circle.classList.remove('dragging');
+    circle.style.transform = '';
+    if (target) {
+      const ids = accounts().map((a) => a.id).filter((id) => id !== circle.dataset.id);
+      const index = ids.indexOf(target.c.dataset.id) + (target.after ? 1 : 0);
+      moveApp(circle.dataset.id, index);
+    } else {
+      render();
+    }
+  };
+
+  circle.addEventListener('pointermove', onMove);
+  circle.addEventListener('pointerup', onUp);
+  circle.addEventListener('pointercancel', onUp);
 }
 
 function renderDetail() {
@@ -170,18 +283,21 @@ function renderDetail() {
   const connected = a.kind === 'auto' && a.ready;
 
   // Remove takes the circle away entirely (and logs out of auto apps).
-  const remove = el('button', { className: 'danger', textContent: 'Remove' });
-  remove.onclick = async () => {
-    if (connected) await api(`/api/${a.id}/disconnect`, { method: 'POST' });
-    pinned = pinned.filter((id) => id !== a.id);
-    savePinned();
-    activeId = null;
-    await refresh();
-  };
+  const remove = el('button', { className: 'danger', textContent: 'Remove', onclick: () => removeApp(a) });
+
+  // Move left/right: an easy alternative to dragging, especially on phones.
+  const order = accounts().map((x) => x.id);
+  const index = order.indexOf(a.id);
+  const moveLeft = el('button', { className: 'secondary move', textContent: '←', title: 'Move left', ariaLabel: 'Move left', disabled: index === 0, onclick: () => moveApp(a.id, index - 1) });
+  const moveRight = el('button', { className: 'secondary move', textContent: '→', title: 'Move right', ariaLabel: 'Move right', disabled: index === order.length - 1, onclick: () => moveApp(a.id, index + 1) });
 
   const title = el('div', { className: 'title' }, [
     el('strong', { textContent: a.label }),
-    el('span', { className: 'muted', textContent: !a.ready ? 'Not connected' : a.kind === 'manual' ? 'Manual' : a.name }),
+    el('span', { className: 'title-side' }, [
+      el('span', { className: 'muted', textContent: !a.ready ? 'Not connected' : a.kind === 'manual' ? 'Manual' : a.name }),
+      moveLeft,
+      moveRight,
+    ]),
   ]);
 
   if (!a.ready) {
@@ -641,6 +757,7 @@ $('#reset').onclick = async () => {
   pinned = DEFAULT_APPS;
   excluded = new Set();
   activeId = null;
+  editing = false;
   newAvatar = null;
   guide = null;
   $('#bio').value = '';
